@@ -131,12 +131,12 @@ def resize_sample_image_and_intrinsics(sample, shape,
         sample[key] = intrinsics
     # Scale images
     for key in filter_dict(sample, [
-        'rgb', 'rgb_original',
+        'rgb', 'rgb_original','rgb_eq'
     ]):
         sample[key] = image_transform(sample[key])
     # Scale context images
     for key in filter_dict(sample, [
-        'rgb_context', 'rgb_context_original',
+        'rgb_context', 'rgb_context_original','rgb_context_eq'
     ]):
         sample[key] = [image_transform(k) for k in sample[key]]
     # Return resized sample
@@ -201,12 +201,12 @@ def to_tensor_sample(sample, tensor_type='torch.FloatTensor'):
     transform = transforms.ToTensor()
     # Convert single items
     for key in filter_dict(sample, [
-        'rgb', 'rgb_original', 'depth', 'input_depth',
+        'rgb', 'rgb_original', 'depth', 'input_depth', 'rgb_eq'
     ]):
         sample[key] = transform(sample[key]).type(tensor_type)
     # Convert lists
     for key in filter_dict(sample, [
-        'rgb_context', 'rgb_context_original', 'depth_context'
+        'rgb_context', 'rgb_context_original', 'depth_context','rgb_context_eq'
     ]):
         sample[key] = [transform(k).type(tensor_type) for k in sample[key]]
     # Return converted sample

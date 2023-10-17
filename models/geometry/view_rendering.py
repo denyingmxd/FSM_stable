@@ -174,8 +174,10 @@ class ViewRendering(nn.Module):
                         # for partial surround view training
                         if cur_index >= self.num_cams: 
                             continue
-
-                        src_color = inputs['color', frame_id, source_scale][:, cur_index, ...]
+                        if self.with_eq:
+                            src_color = inputs['color_eq', frame_id, source_scale][:, cur_index, ...]
+                        else:
+                            src_color = inputs['color', frame_id, source_scale][:, cur_index, ...]
                         src_mask = inputs['mask'][:, cur_index, ...]
                         src_K = inputs[('K', source_scale)][:, cur_index, ...]                        
                         
@@ -188,7 +190,6 @@ class ViewRendering(nn.Module):
                             src_K,
                             rel_pose, 
                             source_scale,
-                            temporal_border=self.spatial_border
                         )
 
 
