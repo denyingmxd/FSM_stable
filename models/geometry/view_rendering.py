@@ -119,7 +119,7 @@ class ViewRendering(nn.Module):
         depth_warped[~valid_depth_max] = max_depth
         return depth_warped, (~invalid_mask).float() * mask_warped * valid_depth_min * valid_depth_max
         
-    def forward(self, inputs, outputs, cam, rel_pose_dict):
+    def forward(self, inputs, outputs, cam, spt_rel_poses):
         # predict images for each scale(default = scale 0 only)
         source_scale = 0
         
@@ -181,7 +181,9 @@ class ViewRendering(nn.Module):
                         src_mask = inputs['mask'][:, cur_index, ...]
                         src_K = inputs[('K', source_scale)][:, cur_index, ...]                        
                         
-                        rel_pose = rel_pose_dict[(frame_id, cur_index)]
+                        # rel_pose = rel_pose_dict[(frame_id, cur_index)]
+                        rel_pose = spt_rel_poses[int(frame_id == 1), cam, cur_index].unsqueeze(0)
+
                         warped_img, warped_mask = self.get_virtual_image(
                             src_color, 
                             src_mask, 

@@ -401,9 +401,9 @@ class VFDepthAlgo(BaseModel):
 
         # generate image and compute loss per cameara
 
-
+        spt_rel_poses = self.pose.compute_each_relative_cam_poses(inputs, outputs)
         for cam in range(self.num_cams):
-            self.pred_cam_imgs(inputs, outputs, cam)
+            self.pred_cam_imgs(inputs, outputs, cam, spt_rel_poses)  # 重建
             cam_loss, loss_dict = self.losses(inputs, outputs, cam)
 
             losses += cam_loss
@@ -418,9 +418,10 @@ class VFDepthAlgo(BaseModel):
         loss_mean['total_loss'] = losses
         return loss_mean
 
-    def pred_cam_imgs(self, inputs, outputs, cam):
+    def pred_cam_imgs(self, inputs, outputs, cam, spt_rel_poses):
         """
         This function renders projected images using camera parameters and depth information.
         """
-        rel_pose_dict = self.pose.compute_relative_cam_poses(inputs, outputs, cam)
-        self.view_rendering(inputs, outputs, cam, rel_pose_dict)
+        # rel_pose_dict = self.pose.compute_relative_cam_poses(inputs, outputs, cam, poses)
+        # self.view_rendering(inputs, outputs, cam, rel_pose_dict)
+        self.view_rendering(inputs, outputs, cam, spt_rel_poses)
