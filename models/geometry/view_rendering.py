@@ -182,7 +182,7 @@ class ViewRendering(nn.Module):
                         src_K = inputs[('K', source_scale)][:, cur_index, ...]                        
                         
                         # rel_pose = rel_pose_dict[(frame_id, cur_index)]
-                        rel_pose = spt_rel_poses[int(frame_id == 1), cam, cur_index].unsqueeze(0)
+                        rel_pose = spt_rel_poses[frame_id + 1, cam, cur_index].unsqueeze(0)
 
                         warped_img, warped_mask = self.get_virtual_image(
                             src_color, 

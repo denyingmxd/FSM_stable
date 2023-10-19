@@ -146,8 +146,9 @@ class Pose:
         cur_ext_inv = inputs['extrinsics_inv']  # 1,6,4,4
 
         sp_rel_poses = torch.matmul(cur_ext_inv, ref_ext)  # 6,6,4,4
-        cam_T_cam = torch.concat([outputs[('cam', i)][('cam_T_cam', 0, j)] for j in [-1, 1] for i in range(6)],
-                                 dim=0).reshape(2, -1, 4, 4)  # 2,6,4,4
+        cam_T_cam = [outputs[('cam', i)][('cam_T_cam', 0, j)] if ('cam_T_cam', 0, j) in outputs[
+            ('cam', i)] else torch.eye(4).unsqueeze(0).to(ref_ext.device) for j in [-1, 0, 1] for i in range(6)]
+        cam_T_cam = torch.concat(cam_T_cam, dim=0).reshape(3, -1, 4, 4)  # 3,6,4,4
 
         spt_rel_poses = torch.matmul(sp_rel_poses.unsqueeze(0), cam_T_cam.unsqueeze(2))  # 2,6,6,4,4  ## T,C_R,C_C,4,4
         return spt_rel_poses
