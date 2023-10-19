@@ -2,7 +2,7 @@ ddp:
   ddp_enable: True
   world_size: 4
   gpus: [0, 1, 2, 3]
-  port: '12355'
+  port: '12375'
 
 model:
   num_layers: 18
@@ -53,7 +53,6 @@ training:
   intensity_align: True
   temporal_intensity_align: False
   temporal_border: True
-
 
   ## Focal length scaling
   focal_length_scale: 300
