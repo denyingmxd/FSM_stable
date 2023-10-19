@@ -48,21 +48,16 @@ def mask_loader_scene(path, mask_idx, cam):
             return img.convert('L')
 
 
-def align_dataset(sample, scales, contexts,has_context,has_eq=False):
+def align_dataset(sample, scales, contexts,has_context):
     """
     This function reorganize samples to match our trainer configuration.
     """
     K = sample['intrinsics']
     aug_images = sample['rgb']
     org_images = sample['rgb_original']
-    if has_eq:
-        eq_images = sample['rgb_eq']
-
     if has_context:
         aug_contexts = sample['rgb_context']
         org_contexts = sample['rgb_context_original']
-        if has_eq:
-            eq_contexts = sample['rgb_context_eq']
 
     n_cam, _, w, h = aug_images.shape
 
@@ -91,20 +86,13 @@ def align_dataset(sample, scales, contexts,has_context,has_eq=False):
         sample[('color', 0, scale)] = resized_org
         sample[('color_aug', 0, scale)] = resized_aug
 
-        if has_eq:
-            resized_eq = F.interpolate(eq_images,
-                                       size=(w // (2 ** scale), h // (2 ** scale)),
-                                       mode='bilinear',
-                                       align_corners=False)
-            sample[('color_eq', 0, scale)] = resized_eq
+
 
     # for context data
     if has_context:
         for idx, frame in enumerate(contexts):
             sample[('color', frame, 0)] = org_contexts[idx]
             sample[('color_aug', frame, 0)] = aug_contexts[idx]
-            if has_eq:
-                sample[('color_eq', frame, 0)] = eq_contexts[idx]
 
     # delete unused arrays
     for key in list(sample.keys()):
@@ -154,7 +142,6 @@ class DDADdataset(torch.utils.data.Dataset):
         self.data_transform = kwargs['data_transform']
         self.cameras = [i.upper() for i in self.cameras]
         self.cfg=cfg
-        self.with_eq = self.cfg['training'].get('with_eq')
 
 
     def __len__(self):
@@ -195,7 +182,6 @@ class DDADdataset(torch.utils.data.Dataset):
                 'contexts': contexts,
                 'splitname': '%s_%010d' % (self.mode, idx),
                 'rgb': pil_loader(rgb_filename),
-                'rgb_eq': pil_loader(rgb_filename),
                 'intrinsics': self.get_K(index_temporal, index_spatial),
                 'intrinsics_org': self.get_K(index_temporal, index_spatial),
             }
@@ -231,8 +217,7 @@ class DDADdataset(torch.utils.data.Dataset):
             # if context is returned
             if self.has_context:
                 rgb_contexts = []
-                if self.with_eq:
-                    rgb_eq_contexts = []
+
                 for iddddx, i in enumerate(contexts):
                     index_temporal_i = self.info[index_temporal]['context'][iddddx]
 
@@ -240,39 +225,13 @@ class DDADdataset(torch.utils.data.Dataset):
                                                 self.cameras[index_spatial], index_temporal_i + '.jpg')
                     rgb_context = pil_loader(rgb_context_filename)
                     rgb_contexts.append(rgb_context)
-                    if self.with_eq:
-                        if self.cfg['training']['eq_type'] == 1:
-                            if index_spatial==0:
-                                rrr = np.array(data['rgb'])
-                                sss = np.array(rgb_context)
-                            else:
-                                rrr = np.array(sample[0]['rgb'])
-                                sss = np.array(rgb_context)
-                            rgb_eq_context = Image.fromarray((exposure.match_histograms(sss,rrr,channel_axis=-1)))
 
-                        rgb_eq_contexts.append(rgb_eq_context)
                 data.update({
                     'rgb_context':rgb_contexts
                 })
-                if self.with_eq:
-                    data.update({
-                        'rgb_context_eq': rgb_eq_contexts
-                    })
-
-            if self.with_eq:
-                here_rgb = data['rgb']
-                here_mask = data['mask']
-                if self.cfg['training']['eq_type']==1:
-                    if index_spatial == 0:
-                        rrr = np.array(data['rgb'])
-                        sss = np.array(here_rgb)
-                    else:
-                        rrr = np.array(sample[0]['rgb'])
-                        sss = np.array(here_rgb)
-                    eq_rgb = Image.fromarray((exposure.match_histograms(sss,rrr,channel_axis=-1)))
 
 
-                data.update({'rgb_eq':eq_rgb})
+
 
 
             sample.append(data)
@@ -286,7 +245,7 @@ class DDADdataset(torch.utils.data.Dataset):
 
         # stack and align dataset for our trainer
         sample = stack_sample(sample)
-        sample = align_dataset(sample, self.scales, contexts,self.has_context,has_eq=self.with_eq)
+        sample = align_dataset(sample, self.scales, contexts,self.has_context)
         # import pickle
         # with open('vf_my.pickle', 'wb') as handle:
         #     pickle.dump(sample, handle, protocol=pickle.HIGHEST_PROTOCOL)

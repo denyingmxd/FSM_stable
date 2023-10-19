@@ -50,11 +50,9 @@ training:
   spatio_temporal: True
 
   ## Intensity align
-  intensity_align: False
-  temporal_intensity_align: True
+  intensity_align: True
+  temporal_intensity_align: False
   temporal_border: True
-  with_eq: True
-  eq_type: 1
 
 
   ## Focal length scaling

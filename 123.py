@@ -1,17 +1,22 @@
-from dgp.datasets import SynchronizedSceneDataset
+import torch
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import time
+m = -4
+c = 12
+noisiness = 7
+num_points = 20000
+x = ( torch.rand( num_points, 1 ) - 0.5 ) * 10
+y = ( ( torch.rand( num_points, 1 ) - 0.5 ) * noisiness ) + ( x * m + c )
+plt.scatter( x.tolist(), y.tolist(), color='red' )
+plt.show()
 
-# Load synchronized pairs of camera and lidar frames.
-dataset = SynchronizedSceneDataset("/data/laiyan/datasets/DDAD/ddad_train_val/ddad.json",
-    datum_names=('lidar', 'CAMERA_01', 'CAMERA_05'),
-    generate_depth_from_datum='lidar',
-    split='val'
-    )
-
-# Iterate through the dataset.
-for sample in dataset:
-    print(1)
-  # Each sample contains a list of the requested datums.
-  #   lidar, camera_01, camera_05 = sample[0:3]
-  #   point_cloud = lidar['point_cloud'] # Nx3 numpy.ndarray
-  #   image_01 = camera_01['rgb']  # PIL.Image
-  #   depth_01 = camera_01['depth'] # (H,W) numpy.ndarray, generated from 'lidar'
+xplusone = torch.cat( ( torch.ones( x.size(0),1 ), x) , 1 )
+a=time.time()
+R, _ = torch.lstsq( y, xplusone )
+R = R[0:xplusone.size(1)]
+print(time.time()-a)
+yh = xplusone.mm( R )
+plt.plot( x.tolist(), yh.tolist() )
+plt.scatter( x.tolist(), y.tolist(), color='red' )
+plt.show()
