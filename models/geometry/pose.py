@@ -150,5 +150,5 @@ class Pose:
             ('cam', i)] else torch.eye(4).unsqueeze(0).to(ref_ext.device) for j in [-1, 0, 1] for i in range(6)]
         cam_T_cam = torch.concat(cam_T_cam, dim=0).reshape(3, -1, 4, 4)  # 3,6,4,4
 
-        spt_rel_poses = torch.matmul(sp_rel_poses.unsqueeze(0), cam_T_cam.unsqueeze(2))  # 2,6,6,4,4  ## T,C_R,C_C,4,4
+        spt_rel_poses = torch.matmul(sp_rel_poses.unsqueeze(0), cam_T_cam.unsqueeze(2))  # 3,6,6,4,4  ## T,C_R,C_C,4,4
         return spt_rel_poses

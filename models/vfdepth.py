@@ -14,6 +14,8 @@ from .base_model import BaseModel
 from .geometry import Pose, ViewRendering
 from .losses import DepthSynLoss, MultiCamLoss, SingleCamLoss
 import kornia
+import threading
+
 _NO_DEVICE_KEYS = ['idx', 'dataset_idx', 'sensor_name', 'filename']
 
 
@@ -207,6 +209,7 @@ class VFDepthAlgo(BaseModel):
             0.1
         )
 
+    #@profile
     def process_batch(self, inputs, rank):
         """
         Pass a minibatch through the network and generate images, depth maps, and losses.
@@ -391,6 +394,7 @@ class VFDepthAlgo(BaseModel):
         else:
             return depth
 
+    #@profile
     def compute_losses(self, inputs, outputs):
         """
         This function computes losses.
@@ -400,10 +404,10 @@ class VFDepthAlgo(BaseModel):
         loss_mean = defaultdict(float)
 
         # generate image and compute loss per cameara
-
-        spt_rel_poses = self.pose.compute_each_relative_cam_poses(inputs, outputs)
+        # spt_rel_poses = self.pose.compute_each_relative_cam_poses(inputs, outputs)
+        # self.view_rendering.pred_all_cam_imgs(inputs, outputs, spt_rel_poses)
         for cam in range(self.num_cams):
-            self.pred_cam_imgs(inputs, outputs, cam, spt_rel_poses)  # 重建
+            self.pred_cam_imgs(inputs, outputs, cam)  # 重建
             cam_loss, loss_dict = self.losses(inputs, outputs, cam)
 
             losses += cam_loss
@@ -418,10 +422,9 @@ class VFDepthAlgo(BaseModel):
         loss_mean['total_loss'] = losses
         return loss_mean
 
-    def pred_cam_imgs(self, inputs, outputs, cam, spt_rel_poses):
+    def pred_cam_imgs(self, inputs, outputs, cam):
         """
         This function renders projected images using camera parameters and depth information.
         """
-        # rel_pose_dict = self.pose.compute_relative_cam_poses(inputs, outputs, cam, poses)
-        # self.view_rendering(inputs, outputs, cam, rel_pose_dict)
-        self.view_rendering(inputs, outputs, cam, spt_rel_poses)
+        rel_pose_dict = self.pose.compute_relative_cam_poses(inputs, outputs, cam)
+        self.view_rendering(inputs, outputs, cam, rel_pose_dict)

@@ -1,5 +1,5 @@
 ddp:
-  ddp_enable: True
+  ddp_enable: False
   world_size: 4
   gpus: [0, 1, 2, 3]
   port: '12375'
