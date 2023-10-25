@@ -1,8 +1,8 @@
 ddp:
-  ddp_enable: False
-  world_size: 1
-  gpus: [0]
-  port: '12355'
+  ddp_enable: True
+  world_size: 4
+  gpus: [0,1,2,3]
+  port: '12359'
 
 model:
   num_layers: 18
@@ -65,8 +65,8 @@ loss:
   disparity_smoothness: 0.001 # For convergence
   spatio_coeff: 0.03
   spatio_tempo_coeff: 0.1
-#  spatial_depth_consistency_loss_weight: 0.001
-#  spatial_depth_consistency_type: 'pre'
+  spatial_depth_consistency_loss_weight: 0.001
+  spatial_depth_consistency_type: 'pre'
 #  sp_tp_recon_con_loss_weight: 0.1
 
 eval:

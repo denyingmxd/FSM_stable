@@ -35,7 +35,83 @@ class ViewRendering(nn.Module):
         mean = (feature * mask).sum(dim=(1,2,3), keepdim=True) / (mask.sum(dim=(1,2,3), keepdim=True) + 1e-8)
         var = ((feature - mean) ** 2).sum(dim=(1,2,3), keepdim=True) / (c*h*w)
         return mean, torch.sqrt(var + 1e-16)     
-    
+
+    def get_ls_image_single(self, src_img, src_mask, warp_img, warp_mask):
+        """
+        obtain normalized warped images using the mean and the variance from the overlapped regions of the target frame.
+        """
+        warp_mask = warp_mask.detach()
+        b,c,h,w = src_img.shape
+        with torch.no_grad():
+            mask = (src_mask * warp_mask).bool()
+            if mask.size(1) != 3:
+                mask = mask.repeat(1,3,1,1)
+
+            mask_sum = mask.sum(dim=(-3,-2,-1))
+            # skip when there is no overlap
+            mask_one = mask[0][0].view(-1)
+            if torch.any(mask_sum == 0):
+                return warp_img
+            kbs = []
+            masked_src_img = mask * src_img
+            masked_warp_img = mask * warp_img
+            for i in range(3):
+                masked_src_img_slice = masked_src_img[0][i].view(-1)
+                masked_warp_img_slice = masked_warp_img[0][i].view(-1)
+                masked_src_img_slice = masked_src_img_slice[mask_one>0]
+                masked_warp_img_slice = masked_warp_img_slice[mask_one>0]
+
+                XX = torch.stack((torch.ones_like(masked_warp_img_slice), masked_warp_img_slice ), 1 )
+                kb = torch.linalg.lstsq(XX, masked_src_img_slice).solution.view(-1,1)
+                kbs.append(kb)
+
+        ls_warps = []
+        for i in range(3):
+            warp_img_slice = warp_img[0][i].view(-1)
+            warp_img_slice_mono = torch.stack( ( torch.ones_like( warp_img_slice), warp_img_slice) , 1 )
+            warp_img_slice_ls = warp_img_slice_mono.mm(kbs[i])
+
+            ls_warps.append(warp_img_slice_ls.view(b,1,h,w))
+        norm_warp = torch.cat(ls_warps,dim=1)
+
+        return norm_warp * warp_mask.float()
+
+    def get_ls2_image_single(self, src_img, src_mask, warp_img, warp_mask):
+        """
+        obtain normalized warped images using the mean and the variance from the overlapped regions of the target frame.
+        """
+        warp_mask = warp_mask.detach()
+        b, c, h, w = src_img.shape
+        with torch.no_grad():
+            mask = (src_mask * warp_mask).bool()
+            if mask.size(1) != 3:
+                mask = mask.repeat(1, 3, 1, 1)
+
+            mask_sum = mask.sum(dim=(-3, -2, -1))
+            # skip when there is no overlap
+            if torch.any(mask_sum == 0):
+                return warp_img
+
+            masked_src_img = mask * src_img
+            masked_warp_img = mask * warp_img
+
+            masked_src_img_vector = masked_src_img[mask]
+            masked_warp_img_vector = masked_warp_img[mask]
+
+            XX = torch.stack((torch.ones_like(masked_warp_img_vector), masked_warp_img_vector), 1)
+            kb = torch.linalg.lstsq(XX, masked_src_img_vector).solution.view(-1, 1)
+
+
+
+
+        warp_img_slice = warp_img.view(-1)
+        warp_img_slice_mono = torch.stack((torch.ones_like(warp_img_slice), warp_img_slice), 1)
+        warp_img_slice_ls = warp_img_slice_mono.mm(kb)
+
+        norm_warp = warp_img_slice_ls.view(b, 3, h, w)
+
+        return norm_warp * warp_mask.float()
+
     def get_norm_image_single(self, src_img, src_mask, warp_img, warp_mask):
         """
         obtain normalized warped images using the mean and the variance from the overlapped regions of the target frame.
@@ -150,14 +226,6 @@ class ViewRendering(nn.Module):
                     temporal_border=self.temporal_border
                 )
                 
-                if self.temporal_intensity_align:
-                    warped_img = self.get_norm_image_single(
-                        ref_color, 
-                        ref_mask,
-                        warped_img, 
-                        warped_mask
-                    )
-                
                 target_view[('color', frame_id, scale)] = warped_img
                 target_view[('color_mask', frame_id, scale)] = warped_mask            
 
@@ -198,6 +266,22 @@ class ViewRendering(nn.Module):
                                 ref_color, 
                                 ref_mask,
                                 warped_img, 
+                                warped_mask
+                            )
+
+                        if self.intensity_align_ls:
+                            warped_img = self.get_ls_image_single(
+                                ref_color,
+                                ref_mask,
+                                warped_img,
+                                warped_mask
+                            )
+
+                        if self.intensity_align_ls2:
+                            warped_img = self.get_ls2_image_single(
+                                ref_color,
+                                ref_mask,
+                                warped_img,
                                 warped_mask
                             )
 

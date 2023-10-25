@@ -1,7 +1,7 @@
 ddp:
-  ddp_enable: False
-  world_size: 1
-  gpus: [0]
+  ddp_enable: True
+  world_size: 4
+  gpus: [0, 1, 2, 3]
   port: '12355'
 
 model:
@@ -50,11 +50,9 @@ training:
   spatio_temporal: True
 
   ## Intensity align
-  intensity_align: True
-  intensity_align_ls: False
-  intensity_align_ls2: False
+  intensity_align: False
+  intensity_align_ls: True
   temporal_border: True
-  smooth_depth: True
 
   ## Focal length scaling
   focal_length_scale: 300
@@ -62,12 +60,13 @@ training:
 #  flip_version: 5
 # Loss hyperparams
 loss:
-  disparity_smoothness: 0.001 # For convergence
+  disparity_smoothness: 0.1 # For convergence
   spatio_coeff: 0.03
   spatio_tempo_coeff: 0.1
-#  spatial_depth_consistency_loss_weight: 0.001
-#  spatial_depth_consistency_type: 'pre'
+  spatial_depth_consistency_loss_weight: 0.001
+  spatial_depth_consistency_type: 'pre'
 #  sp_tp_recon_con_loss_weight: 0.1
+
 
 eval:
   eval_batch_size: 4
@@ -81,7 +80,7 @@ eval:
 load:
   pretrain: False
   weights: 'weights_19'
-  models_to_load: ['depth_net','pose_net']
+  models_to_load: ['depth_net']
 
 logging:
   early_phase: 2000

@@ -65,6 +65,15 @@ class VFDepthTrainer:
             before_op_time = time.time()
             model.optimizer.zero_grad(set_to_none=True)
             outputs, losses = model.process_batch(inputs, self.rank)
+            # outputs[('cam',0)][('depth',0)].retain_grad()
+            # #
+            # losses['reproj_loss'].backward(retain_graph=True)
+            # #
+            # losses['spatio_loss'].backward(retain_graph=True)
+            # #
+            # losses['spatio_tempo_loss'].backward(retain_graph=True)
+
+
             losses['total_loss'].backward()
             model.optimizer.step()
             after_op_time = time.time()

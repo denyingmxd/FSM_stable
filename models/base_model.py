@@ -73,9 +73,16 @@ class BaseModel:
             # distribute gpus for ddp retraining
             if self.pretrain and self.ddp_enable:
                 pre_trained_dict = torch.load(path, map_location=map_location)
+            elif not self.ddp_enable and self.mode=='train':
+                pre_trained_dict = torch.load(path)
+                torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
+                    pre_trained_dict, "module."
+                )
             else: 
                 pre_trained_dict = torch.load(path)
-                
+                # torch.nn.modules.utils.consume_prefix_in_state_dict_if_present(
+                #     pre_trained_dict, "module."
+                # )
             # load parameters
             pre_trained_dict = {k: v for k, v in pre_trained_dict.items() if k in model_dict}
             model_dict.update(pre_trained_dict)

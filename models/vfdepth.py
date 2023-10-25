@@ -416,6 +416,7 @@ class VFDepthAlgo(BaseModel):
             loss_mean[k] = sum(loss_fn[k]) / float(len(loss_fn[k]))
 
         loss_mean['total_loss'] = losses
+        # loss_mean['rel_poses'] = spt_rel_poses
         return loss_mean
 
     def pred_cam_imgs(self, inputs, outputs, cam, spt_rel_poses):

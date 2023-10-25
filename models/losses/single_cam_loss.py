@@ -66,7 +66,9 @@ class SingleCamLoss(BaseLoss):
         mean_disp = disp.mean(2, True).mean(3, True)
         norm_disp = disp / (mean_disp + 1e-8)
         return compute_edg_smooth_loss(color, norm_disp)
-        
+
+
+
     def forward(self, inputs, outputs, cam):        
         loss_dict = {}
         cam_loss = 0. # loss across the multi-scale

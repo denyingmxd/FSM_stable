@@ -2,8 +2,8 @@
 import torch
 from pytorch3d.transforms import matrix_to_euler_angles
 import matplotlib.pyplot as plt
-from .loss_util import compute_photometric_loss, compute_masked_loss,compute_masked_edg_smooth_loss
 from .single_cam_loss import SingleCamLoss
+from .loss_util import compute_photometric_loss, compute_edg_smooth_loss, compute_masked_loss
 
 
 class MultiCamLoss(SingleCamLoss):
@@ -118,20 +118,16 @@ class MultiCamLoss(SingleCamLoss):
                 target_view[('sp_tp_recon_con_loss', scale,frame_id)] = local_loss*pred_mask
             return sp_tp_recon_con_loss/len(self.frame_ids[1:])
 
-    def compute_spatial_depth_aug_smooth_loss(self,inputs, target_view, cam=None, scale=None, ref_mask=None, reproj_loss_mask=None):
-        spatio_mask = ref_mask * target_view[('overlap_mask', 0, scale)]
 
-        overlap_depth = target_view[('overlap_depth', 0, scale)]
-        depth_aug_smooth_mask = spatio_mask * (overlap_depth > 0)
-
+    def compute_depth_smooth_loss(self, inputs, target_view, cam = 0, scale = 0, ref_mask=None):
+        """
+        This function computes edge-aware smoothness loss for the disparity map.
+        """
         color = inputs['color', 0, scale][:, cam, ...]
-        original_depth = target_view[('depth', scale)]
-
-        mean_original_depth = original_depth.mean(2, True).mean(3, True)
-
-        normed_depth = overlap_depth / (mean_original_depth + 1e-8)
-
-        return compute_masked_edg_smooth_loss(color, normed_depth, depth_aug_smooth_mask)
+        disp = target_view[('depth', scale)]
+        mean_disp = disp.mean(2, True).mean(3, True)
+        norm_disp = disp / (mean_disp + 1e-8)
+        return compute_edg_smooth_loss(color, norm_disp)
 
     def compute_pose_con_loss(self, inputs, outputs, cam=None, scale=None, ref_mask=None, reproj_loss_mask=None) :
         """
@@ -178,7 +174,10 @@ class MultiCamLoss(SingleCamLoss):
             }
 
             reprojection_loss = self.compute_reproj_loss(inputs, target_view, **kargs)
-            smooth_loss = self.compute_smooth_loss(inputs, target_view, **kargs)
+            if hasattr(self,'smooth_depth') and self.smooth_depth:
+                smooth_loss = self.compute_depth_smooth_loss(inputs, target_view, **kargs)
+            else:
+                smooth_loss = self.compute_smooth_loss(inputs, target_view, **kargs)
             spatio_loss = self.compute_spatio_loss(inputs, target_view, **kargs)
 
             kargs['reproj_loss_mask'] = target_view[('reproj_mask', scale)]
@@ -217,6 +216,11 @@ class MultiCamLoss(SingleCamLoss):
                 loss_dict['spatio_loss'] = spatio_loss.item()
                 loss_dict['spatio_tempo_loss'] = spatio_tempo_loss.item()
                 loss_dict['smooth'] = smooth_loss.item()
+                # loss_dict['reproj_loss'] = reprojection_loss
+                # loss_dict['spatio_loss'] = spatio_loss
+                # loss_dict['spatio_tempo_loss'] = spatio_tempo_loss
+                # loss_dict['smooth'] = smooth_loss
+
                 if self.pose_model == 'fsm' and cam != 0:
                     loss_dict['pose'] = pose_loss.item()
                 if hasattr(self, 'spatial_depth_consistency_loss_weight') :

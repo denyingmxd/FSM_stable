@@ -37,36 +37,8 @@ def compute_edg_smooth_loss(rgb, disp_map):
     grad_disp_x *= (-1.0 * grad_rgb_x).exp()
     grad_disp_y *= (-1.0 * grad_rgb_y).exp()
     return grad_disp_x.mean() + grad_disp_y.mean()
+    # return grad_disp_x, grad_disp_y
 
-def compute_masked_edg_smooth_loss(rgb, disp_map,mask):
-    """
-    This function calculates edge-aware smoothness.
-    """
-    grad_rgb_x = (rgb[:, :, :, :-1] - rgb[:, :, :, 1:]).abs().mean(1, True)
-    grad_rgb_y = (rgb[:, :, :-1, :] - rgb[:, :, 1:, :]).abs().mean(1, True)
-
-    grad_disp_x = (disp_map[:, :, :, :-1] - disp_map[:, :, :, 1:]).abs()
-    grad_disp_y = (disp_map[:, :, :-1, :] - disp_map[:, :, 1:, :]).abs()
-
-    grad_disp_x *= (-1.0 * grad_rgb_x).exp()
-    grad_disp_y *= (-1.0 * grad_rgb_y).exp()
-
-    mask_padded = torch.nn.functional.pad(mask, (1, 1, 1, 1), 'constant', 1)
-    inlap_mask = torch.conv2d(mask_padded, weight=torch.tensor([
-        [0, 1, 0],
-        [1, 0, 1],
-        [0, 1, 0]
-    ]).unsqueeze(0).unsqueeze(0).float().cuda(mask.device))
-
-    inlap_mask = inlap_mask == 4
-    mask = mask * inlap_mask
-
-    mask_x = mask[:, :, :, :-1]
-    mask_y = mask[:, :, :-1, :]
-    grad_disp_x_loss = compute_masked_loss(grad_disp_x,mask_x)
-    grad_disp_y_loss = compute_masked_loss(grad_disp_y,mask_y)
-
-    return grad_disp_x_loss + grad_disp_y_loss
 
 
 def compute_ssim_loss(pred, target):
