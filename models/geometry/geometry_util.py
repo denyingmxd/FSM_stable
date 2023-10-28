@@ -54,7 +54,6 @@ class Projection(nn.Module):
         self.to_homo = torch.ones([batch_size, 1, width*height]).to(device)
         self.homo_points = torch.cat([img_points, self.to_homo], 1)
 
-    #@profile
     def backproject(self, invK, depth):
         """
         This function back-projects 2D image points to 3D.
@@ -64,8 +63,7 @@ class Projection(nn.Module):
         points3D = torch.matmul(invK[:, :3, :3], self.homo_points)
         points3D = depth*points3D
         return torch.cat([points3D, self.to_homo], 1)
-    
-    #@profile
+
     def reproject(self, K, points3D, T):
         """
         This function reprojects transformed 3D points to 2D image coordinate.
@@ -124,15 +122,20 @@ class Projection(nn.Module):
         points2D = points2D.view(self.batch_size, 3, self.height, self.width)
         return points2D
 
-    #@profile
+    def reproject_transform_multi_cam(self,K, points3D, T):
+        points2D = (K @ T)[..., :3, :] @ points3D
+
+        # normalize projected points for grid sample function
+        points2D = points2D.view(*points2D.shape[:-1], self.height, self.width)
+        return points2D
+
     def forward(self, depth, T, bp_invK, rp_K):
         cam_points = self.backproject(bp_invK, depth)
 
         pix_coords = self.reproject(rp_K, cam_points, T)
         return pix_coords
 
-    #@profile
-    def backproject_temp(self, invK, depth):
+    def backproject_multi_cam(self, invK, depth):
         """
         This function back-projects 2D image points to 3D.
         """
@@ -141,13 +144,12 @@ class Projection(nn.Module):
         points3D = depth * points3D  # 1, 6, 3, 245760
         return torch.cat([points3D, self.to_homo.unsqueeze(0).expand(-1, 6, -1, -1)], 2)
 
-    #@profile
-    def reproject_temp(self, K, points3D, T):
+    def reproject_multi_cam(self, K, points3D, T):
         """
         This function reprojects transformed 3D points to 2D image coordinate.
         """
         # project points
-        points2D = (K @ T)[..., :3, :] @ points3D.permute(1, 0, 2, 3)
+        points2D = (K @ T)[..., :3, :] @ points3D
         # normalize projected points for grid sample function
         norm_points2D = points2D[..., :2, :] / (points2D[..., 2:, :] + 1e-7)
         norm_points2D = norm_points2D.view(*norm_points2D.shape[:-1], self.height, self.width)
@@ -159,11 +161,10 @@ class Projection(nn.Module):
         norm_points2D.sub_(0.5).mul_(2)
         return norm_points2D
 
-    #@profile
     def forward_temp(self, depth, T, bp_invK, rp_K):
-        cam_points = self.backproject_temp(bp_invK, depth)  # 1, 6, 4, 245760
+        cam_points = self.backproject_multi_cam(bp_invK, depth)  # 1, 6, 4, 245760
 
-        pix_coords = self.reproject_temp(rp_K, cam_points, T)
+        pix_coords = self.reproject_multi_cam(rp_K, cam_points, T)
         return pix_coords
 
     def get_unnormed_projects(self, depth, T, bp_invK, rp_K):
@@ -178,3 +179,8 @@ class Projection(nn.Module):
         pix_coords = self.reproject_transform(rp_K, cam_points, T)
         return pix_coords
 
+    def transform_depth_multi_cam(self, depth, T, bp_invK, rp_K):
+        cam_points = self.backproject_multi_cam(bp_invK, depth)
+
+        pix_coords = self.reproject_transform_multi_cam(rp_K, cam_points, T)
+        return pix_coords

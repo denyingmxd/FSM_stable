@@ -209,7 +209,6 @@ class VFDepthAlgo(BaseModel):
             0.1
         )
 
-    #@profile
     def process_batch(self, inputs, rank):
         """
         Pass a minibatch through the network and generate images, depth maps, and losses.
@@ -226,7 +225,8 @@ class VFDepthAlgo(BaseModel):
         if self.mode!='train':
 
             return outputs,None
-        losses = self.compute_losses(inputs, outputs)
+        # losses = self.compute_losses(inputs, outputs)
+        losses = self.compute_losses_multi_cam(inputs, outputs)
         return outputs, losses
 
     def estimate_vfdepth(self, inputs):
@@ -394,7 +394,14 @@ class VFDepthAlgo(BaseModel):
         else:
             return depth
 
-    #@profile
+    def compute_losses_multi_cam(self, inputs, outputs):
+        # generate image and compute loss per cameara
+        spt_rel_poses = self.pose.compute_each_relative_cam_poses(inputs, outputs)
+        self.view_rendering.pred_all_cam_imgs(inputs, outputs, spt_rel_poses)
+        total_loss, loss_dict = self.losses.forward_multi_cam(inputs, outputs)
+        loss_dict['total_loss'] = total_loss
+        return loss_dict
+
     def compute_losses(self, inputs, outputs):
         """
         This function computes losses.
@@ -404,8 +411,6 @@ class VFDepthAlgo(BaseModel):
         loss_mean = defaultdict(float)
 
         # generate image and compute loss per cameara
-        # spt_rel_poses = self.pose.compute_each_relative_cam_poses(inputs, outputs)
-        # self.view_rendering.pred_all_cam_imgs(inputs, outputs, spt_rel_poses)
         for cam in range(self.num_cams):
             self.pred_cam_imgs(inputs, outputs, cam)  # 重建
             cam_loss, loss_dict = self.losses(inputs, outputs, cam)

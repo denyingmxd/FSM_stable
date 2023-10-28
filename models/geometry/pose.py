@@ -142,13 +142,33 @@ class Pose:
         """
         This function computes spatio & spatio-temporal transformation for images from different viewpoints.
         """
-        ref_ext = inputs['extrinsics'].permute(1, 0, 2, 3)  # 6,1,4,4
-        cur_ext_inv = inputs['extrinsics_inv']  # 1,6,4,4
+        ref_ext = inputs['extrinsics']  # 1,6,4,4
+        cam_T_cam_past = [outputs[('cam', i)][('cam_T_cam', 0, -1)] for i in range(6)]
+        cam_T_cam_past = torch.concat(cam_T_cam_past, dim=0)  # 6,4,4
+        cam_T_cam_future = [outputs[('cam', i)][('cam_T_cam', 0, 1)] for i in range(6)]
+        cam_T_cam_future = torch.concat(cam_T_cam_future, dim=0)  # 6,4,4
+        spatio_left_order = [1, 3, 0, 5, 2, 4]
+        spatio_right_order = [2, 0, 4, 1, 5, 3]
+        results = {}
 
-        sp_rel_poses = torch.matmul(cur_ext_inv, ref_ext)  # 6,6,4,4
-        cam_T_cam = [outputs[('cam', i)][('cam_T_cam', 0, j)] if ('cam_T_cam', 0, j) in outputs[
-            ('cam', i)] else torch.eye(4).unsqueeze(0).to(ref_ext.device) for j in [-1, 0, 1] for i in range(6)]
-        cam_T_cam = torch.concat(cam_T_cam, dim=0).reshape(3, -1, 4, 4)  # 3,6,4,4
+        # 1.temporal
+        for frame_id in self.frame_ids[1:]:
+            sp_rel_poses = torch.matmul(inputs['extrinsics_inv'], ref_ext)  # 1,6,4,4
+            cam_T_cam = cam_T_cam_past if frame_id == -1 else cam_T_cam_future
+            sp_rel_poses = torch.matmul(sp_rel_poses, cam_T_cam)  # 1,6,4,4
+            results[('temporal', frame_id)] = sp_rel_poses
 
-        spt_rel_poses = torch.matmul(sp_rel_poses.unsqueeze(0), cam_T_cam.unsqueeze(2))  # 3,6,6,4,4  ## T,C_R,C_C,4,4
-        return spt_rel_poses
+        # 2.spatio and temporal
+        for frame_id in self.frame_ids:
+            for direction in ['left', 'right']:
+                order = spatio_left_order if direction == 'left' else spatio_right_order
+                cur_ext_inv = inputs['extrinsics_inv'][:, order, ...]  # 1,6,4,4
+                sp_rel_poses = torch.matmul(cur_ext_inv, ref_ext)  # 1,6,4,4
+                if frame_id == 0:
+                    results[('spatio', direction)] = sp_rel_poses
+                else:
+                    cam_T_cam = cam_T_cam_past if frame_id == -1 else cam_T_cam_future  # 1,6,4,4
+                    sp_rel_poses = torch.matmul(sp_rel_poses, cam_T_cam)  # 1,6,4,4
+                    results[('spatio_temporal', direction, frame_id)] = sp_rel_poses
+
+        return results

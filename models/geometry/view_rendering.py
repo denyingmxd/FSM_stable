@@ -27,6 +27,16 @@ class ViewRendering(nn.Module):
                 self.batch_size, self.height, self.width, rank)
         return project_imgs    
     
+    def get_mean_std_multi_cam(self, feature, mask):
+        """
+        This function returns mean and standard deviation of the overlapped features.
+        """
+        sum_dim = list(range(len(mask.shape) - 3, len(mask.shape)))
+        mask_num = mask.sum(dim=sum_dim, keepdim=True)
+        mean = (feature * mask).sum(dim=sum_dim, keepdim=True) / (mask_num + 1e-8)
+        var = (((feature - mean) * mask) ** 2).sum(dim=sum_dim, keepdim=True) / (mask_num + 1e-8)
+        return mean, torch.sqrt(var + 1e-16)
+
     def get_mean_std(self, feature, mask):
         """
         This function returns mean and standard deviation of the overlapped features. 
@@ -37,6 +47,21 @@ class ViewRendering(nn.Module):
         var = (((feature - mean) * mask) ** 2).sum(dim=(1, 2, 3), keepdim=True) / (mask_num + 1e-8)
         return mean, torch.sqrt(var + 1e-16)
     
+    def get_norm_image_multi_cam(self, src_img, src_mask, warp_img, warp_mask):
+        """
+        obtain normalized warped images using the mean and the variance from the overlapped regions of the target frame.
+        """
+        warp_mask = warp_mask.detach()
+
+        with torch.no_grad():
+            mask = (src_mask * warp_mask).bool()
+
+            s_mean, s_std = self.get_mean_std_multi_cam(src_img, mask)
+            w_mean, w_std = self.get_mean_std_multi_cam(warp_img, mask)
+
+        norm_warp = (warp_img - w_mean) / w_std * s_std + s_mean
+        return norm_warp * warp_mask.float()
+
     def get_norm_image_single(self, src_img, src_mask, warp_img, warp_mask):
         """
         obtain normalized warped images using the mean and the variance from the overlapped regions of the target frame.
@@ -54,7 +79,6 @@ class ViewRendering(nn.Module):
         norm_warp = (warp_img - w_mean) / w_std * s_std + s_mean
         return norm_warp * warp_mask.float()   
 
-    #@profile
     def get_virtual_image(self, src_img, src_mask, tar_depth, tar_invK, src_K, T, scale=0, temporal_border=False):
         """
         This function warps source image to target image using backprojection and reprojection process. 
@@ -116,29 +140,16 @@ class ViewRendering(nn.Module):
         depth_warped[~valid_depth_max] = max_depth
         return depth_warped, (~invalid_mask).float() * mask_warped * valid_depth_min * valid_depth_max
 
-    #@profile
-    def get_virtual_image_temp(self, color, mask, depth, invK, K, cam_T_cam, scale=0):
+    def get_virtual_image_multi_cam(self, color, mask, depth, invK, K, cam_T_cam, scale=0, img_warp_pad_mode='zeros'):
         """
                 This function warps source image to target image using backprojection and reprojection process.
                 """
         # do reconstruction for target from source
         pix_coords = self.project.forward_temp(depth, cam_T_cam, invK, K)
         pix_coords = pix_coords.view(-1, *pix_coords.shape[-3:])
-        color = color.squeeze(0).repeat(6, 1, 1, 1)
-        mask = mask.squeeze(0).repeat(6, 1, 1, 1)
 
-        # mask_border = torch.eye(D1, D2, device=color.device, dtype=torch.bool).view(1, D1, D2, 1, 1, 1)
-        # mask_border = mask_border.expand(T, D1, D2, C, H, W).reshape(-1, C, H, W)
-
-        # color = color.reshape(-1, C, H, W)
-        #
-        # out_border = F.grid_sample(color, pix_coords, mode='bilinear', padding_mode='border', align_corners=True)
-        # out_zeros = F.grid_sample(color, pix_coords, mode='bilinear', padding_mode='zeros', align_corners=True)
-        #
-        # img_warped = torch.where(mask_border, out_border, out_zeros)
-        # img_warped = img_warped.view(T, D1, D2, *img_warped.shape[-3:])
-        img_warped = F.grid_sample(color, pix_coords, mode='bilinear', padding_mode='zeros', align_corners=True)
-        mask_warped = F.grid_sample(mask, pix_coords, mode='nearest', padding_mode='zeros', align_corners=True)
+        img_warped = F.grid_sample(color.squeeze(0), pix_coords, mode='bilinear', padding_mode=img_warp_pad_mode, align_corners=True)
+        mask_warped = F.grid_sample(mask.squeeze(0), pix_coords, mode='nearest', padding_mode='zeros', align_corners=True)
 
         # nan handling
         inf_img_regions = torch.isnan(img_warped)
@@ -153,39 +164,67 @@ class ViewRendering(nn.Module):
                                         pix_coords < -1).sum(dim=1, keepdim=True) > 0
         mask_warped = ((~invalid_mask).float() * mask_warped)
 
-        img_warped = img_warped.view(6, 6, *img_warped.shape[-3:])
-        mask_warped = mask_warped.view(6, 6, *mask_warped.shape[-3:])
+        return img_warped.unsqueeze(0), mask_warped.unsqueeze(0)
 
-        return img_warped, mask_warped
-
-    #@profile
     def pred_all_cam_imgs(self, inputs, outputs, spt_rel_poses):
         scale = 0
-        color_past, color_now, color_future = [inputs['color', frame_ids, scale] for frame_ids in self.frame_ids] # 1,6,3,384,640
-        depth = torch.concat([outputs[('cam', i)][('depth', scale)] for i in range(6)], dim=0).unsqueeze(0)  # 1,6,1,384,640
-        mask = inputs['mask']  # 1,6,1,384,640
-        K = inputs[('K', scale)]  # 1,6,4,4
-        invK = inputs[('inv_K', scale)]  # 1,6,4,4
+        ref_depth = torch.concat([outputs[('cam', i)][('depth', scale)] for i in range(6)], dim=0).unsqueeze(0)  # 1,6,1,384,640
+        outputs[('depth_multi_cam', scale)] = ref_depth
+        ref_mask = inputs['mask']
+        ref_invK = inputs[('inv_K', scale)]  # 1,6,4,4
+        ref_K = inputs[('K', scale)]
+        spatio_left_order = [1, 3, 0, 5, 2, 4]
+        spatio_right_order = [2, 0, 4, 1, 5, 3]
 
-        # 1.spatial progress
-        warped_img, warped_mask = self.get_virtual_image_temp(color_past, mask, depth, invK, K, spt_rel_poses[0], scale)
-        self.build_cam_outputs(outputs, warped_img, warped_mask, -1)
-        warped_img, warped_mask = self.get_virtual_image_temp(color_now, mask, depth, invK, K, spt_rel_poses[1], scale)
-        self.build_cam_outputs(outputs, warped_img, warped_mask, 0)
-        warped_img, warped_mask = self.get_virtual_image_temp(color_future, mask, depth, invK, K, spt_rel_poses[2], scale)
-        self.build_cam_outputs(outputs, warped_img, warped_mask, 1)
+        # 1.temporal
+        for frame_id in self.frame_ids[1:]:
+            spt_rel_pose = spt_rel_poses[('temporal', frame_id)]
+            warped_img, warped_mask = self.get_virtual_image_multi_cam(inputs['color', frame_id, scale], inputs['mask'],
+                                                                  ref_depth, ref_invK, inputs[('K', scale)],
+                                                                  spt_rel_pose,
+                                                                  scale, img_warp_pad_mode='border')
+            self.build_cam_outputs(outputs, warped_img, warped_mask, 'color', frame_id)
 
-    def build_cam_outputs(self, outputs, warped_img, warped_mask, temporal):
-        for cam in range(6):
-            if temporal != 0:
-                outputs[('cam', cam)][('color', temporal, 0)] = warped_img[cam, cam].unsqueeze(0)
-                outputs[('cam', cam)][('color_mask', temporal, 0)] = warped_mask[cam, cam].unsqueeze(0)
-            outputs[('cam', cam)]['overlap', temporal, 0] = (warped_img[cam, self.rel_cam_list[cam][0]] + warped_img[
-                cam, self.rel_cam_list[cam][1]]).unsqueeze(0)
-            outputs[('cam', cam)]['overlap_mask', temporal, 0] = (
-                        warped_mask[cam, self.rel_cam_list[cam][0]] + warped_mask[
-                    cam, self.rel_cam_list[cam][1]]).unsqueeze(0)
-    #@profile
+        # 2.spatio and temporal
+        for frame_id in self.frame_ids:
+            overlap_img = torch.zeros_like(inputs['color', frame_id, scale])
+            overlap_mask = torch.zeros_like(inputs['mask'])
+            use_depth_consistency = hasattr(self, 'spatial_depth_consistency_loss_weight')
+            overlap_depth = torch.zeros_like(ref_depth) if use_depth_consistency else None
+            for direction in ['left', 'right']:
+                spt_rel_pose = spt_rel_poses[('spatio', direction)] if frame_id == 0 else spt_rel_poses[
+                    ('spatio_temporal', direction, frame_id)]
+                order = spatio_left_order if direction == 'left' else spatio_right_order
+                src_color = inputs['color', frame_id, scale][:, order, ...]
+                src_mask = ref_mask[:, order, ...]
+                src_K = ref_K[:, order, ...]
+                warped_img, warped_mask = self.get_virtual_image_multi_cam(src_color, src_mask, ref_depth, ref_invK, src_K,
+                                                                      spt_rel_pose, scale)
+                if self.intensity_align:
+                    warped_img = self.get_norm_image_multi_cam(inputs['color', frame_id, scale], inputs['mask'],
+                                                            warped_img, warped_mask)
+                overlap_img += warped_img
+                overlap_mask += warped_mask
+
+                if use_depth_consistency and frame_id == 0:
+                    src_depth = ref_depth[:, order, ...]
+                    src_invK = ref_invK[:, order, ...]
+                    src_depth_tar_view = self.project.transform_depth_multi_cam(src_depth,
+                                                                                torch.linalg.inv(spt_rel_pose),
+                                                                                src_invK,
+                                                                                ref_K)[:, :, 2:]
+                    warped_depth, warped_mask = self.get_virtual_image_multi_cam(src_depth_tar_view, src_mask, ref_depth,
+                                                                       ref_invK, src_K, spt_rel_pose, scale)
+                    overlap_depth = overlap_depth + warped_depth
+
+            self.build_cam_outputs(outputs, overlap_img, overlap_mask, 'overlap', frame_id, overlap_depth=overlap_depth)
+
+    def build_cam_outputs(self, outputs, warped_img, warped_mask, warp_mode, frame_id, overlap_depth=None):
+        outputs[(warp_mode, frame_id, 0)] = warped_img
+        outputs[(warp_mode + '_mask', frame_id, 0)] = warped_mask
+        if overlap_depth is not None:
+            outputs[(warp_mode + '_depth', frame_id, 0)] = overlap_depth
+
     def forward(self, inputs, outputs, cam, rel_pose_dict):
         # predict images for each scale(default = scale 0 only)
         scale = source_scale = 0

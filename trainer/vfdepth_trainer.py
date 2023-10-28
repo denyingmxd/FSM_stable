@@ -53,7 +53,6 @@ class VFDepthTrainer:
         if self.rank == 0:
             self.logger.close_tb()
 
-    #@profile
     def train(self, model, data_loader, start_time):
         """
         This function trains models.

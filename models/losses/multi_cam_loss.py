@@ -2,7 +2,8 @@
 import torch
 from pytorch3d.transforms import matrix_to_euler_angles
 import matplotlib.pyplot as plt
-from .loss_util import compute_photometric_loss, compute_masked_loss,compute_masked_edg_smooth_loss
+from .loss_util import (compute_photometric_loss, compute_masked_loss,compute_masked_edg_smooth_loss,
+                        compute_photometric_loss_multi_cam)
 from .single_cam_loss import SingleCamLoss
 
 
@@ -13,12 +14,28 @@ class MultiCamLoss(SingleCamLoss):
     def __init__(self, cfg, rank):
         super(MultiCamLoss, self).__init__(cfg, rank)
 
+    def compute_spatio_loss_multi_cam(self, inputs, outputs, scale=0):
+        """
+        This function computes spatial loss.
+        """
+        # self occlusion mask * overlap region mask
+        spatio_mask = inputs['mask'] * outputs[('overlap_mask', 0, scale)]  # 1,6,1,384,640
+        loss_args = {
+            'pred': outputs[('overlap', 0, scale)],
+            'target': inputs['color', 0, 0]
+        }
+        spatio_loss = compute_photometric_loss_multi_cam(**loss_args)  # 1,6,1,384,640
+
+        outputs[('overlap_mask', 0, scale)] = spatio_mask
+        outputs[('sp_loss', 0, scale)] = spatio_loss
+        return compute_masked_loss(spatio_loss, spatio_mask)
+
     def compute_spatio_loss(self, inputs, target_view, cam=None, scale=None, ref_mask=None):
         """
         This function computes spatial loss.
         """
         # self occlusion mask * overlap region mask
-        spatio_mask = ref_mask * target_view[('overlap_mask', 0, scale)]
+        spatio_mask = ref_mask * target_view[('overlap_mask', 0, scale)]  # 1,1,384,640
         if self.with_eq:
             loss_args = {
                 'pred': target_view[('overlap', 0, scale)],
@@ -29,11 +46,41 @@ class MultiCamLoss(SingleCamLoss):
                 'pred': target_view[('overlap', 0, scale)],
                 'target': inputs['color', 0, 0][:, cam, ...]
             }
-        spatio_loss = compute_photometric_loss(**loss_args)
+        spatio_loss = compute_photometric_loss(**loss_args)  # 1,1,384,640
 
         target_view[('overlap_mask', 0, scale)] = spatio_mask
         target_view[('sp_loss', 0, scale)] = spatio_loss
         return compute_masked_loss(spatio_loss, spatio_mask)
+
+    def compute_spatio_tempo_loss_multi_cam(self, inputs, outputs, scale=0, reproj_loss_mask=None) :
+        """
+        This function computes spatio-temporal loss.
+        """
+        spatio_tempo_losses = []
+        spatio_tempo_masks = []
+        for frame_id in self.frame_ids[1:]:
+
+            pred_mask = inputs['mask'] * outputs[('overlap_mask', frame_id, scale)]  # 1,6,1,384,640
+            pred_mask = pred_mask * reproj_loss_mask  # 1,6,1,384,640
+
+            loss_args = {
+                'pred': outputs[('overlap', frame_id, scale)],
+                'target': inputs['color', 0, 0]
+            }
+
+            spatio_tempo_losses.append(compute_photometric_loss_multi_cam(**loss_args))
+            spatio_tempo_masks.append(pred_mask)
+
+        # concatenate losses and masks
+        spatio_tempo_losses = torch.cat(spatio_tempo_losses, 2)  # 1,6,2,384,640
+        spatio_tempo_masks = torch.cat(spatio_tempo_masks, 2)  # 1,6,2,384,640
+
+        # for the loss, take minimum value between reprojection loss and identity loss(moving object)
+        # for the mask, take maximum value between reprojection mask and overlap mask to apply losses on all the True values of masks.
+        spatio_tempo_loss, reprojection_loss_min_index = torch.min(spatio_tempo_losses, dim=2, keepdim=True)  # 1,6,1,384,640
+        spatio_tempo_mask, _ = torch.max(spatio_tempo_masks.float(), dim=2, keepdim=True)  # 1,6,1,384,640
+
+        return compute_masked_loss(spatio_tempo_loss, spatio_tempo_mask)
 
     def compute_spatio_tempo_loss(self, inputs, target_view, cam=None, scale=None, ref_mask=None, reproj_loss_mask=None) :
         """
@@ -43,8 +90,8 @@ class MultiCamLoss(SingleCamLoss):
         spatio_tempo_masks = []
         for frame_id in self.frame_ids[1:]:
 
-            pred_mask = ref_mask * target_view[('overlap_mask', frame_id, scale)]
-            pred_mask = pred_mask * reproj_loss_mask
+            pred_mask = ref_mask * target_view[('overlap_mask', frame_id, scale)]  # 1,1,384,640
+            pred_mask = pred_mask * reproj_loss_mask  # 1,1,384,640
 
             if self.with_eq:
                 loss_args = {
@@ -61,13 +108,13 @@ class MultiCamLoss(SingleCamLoss):
             spatio_tempo_masks.append(pred_mask)
 
         # concatenate losses and masks
-        spatio_tempo_losses = torch.cat(spatio_tempo_losses, 1)
-        spatio_tempo_masks = torch.cat(spatio_tempo_masks, 1)
+        spatio_tempo_losses = torch.cat(spatio_tempo_losses, 1)  # 1,2,384,640
+        spatio_tempo_masks = torch.cat(spatio_tempo_masks, 1)  # 1,2,384,640
 
         # for the loss, take minimum value between reprojection loss and identity loss(moving object)
         # for the mask, take maximum value between reprojection mask and overlap mask to apply losses on all the True values of masks.
-        spatio_tempo_loss, reprojection_loss_min_index = torch.min(spatio_tempo_losses, dim=1, keepdim=True)
-        spatio_tempo_mask, _ = torch.max(spatio_tempo_masks.float(), dim=1, keepdim=True)
+        spatio_tempo_loss, reprojection_loss_min_index = torch.min(spatio_tempo_losses, dim=1, keepdim=True)  # 1,1,384,640
+        spatio_tempo_mask, _ = torch.max(spatio_tempo_masks.float(), dim=1, keepdim=True)  # 1,1,384,640
 
         if hasattr(self,'sptp_recon_con_type'):
             if self.sptp_recon_con_type=='combine':
@@ -78,15 +125,26 @@ class MultiCamLoss(SingleCamLoss):
 
         return compute_masked_loss(spatio_tempo_loss, spatio_tempo_mask)
 
+    def compute_spatial_depth_consistency_loss_multi_cam(self, inputs, outputs, scale=0, reproj_loss_mask=None):
+        spatio_mask = inputs['mask'] * outputs[('overlap_mask', 0, scale)]  # 1,6,1,384,640
+        loss_args = {
+            'pred': outputs[('overlap_depth', 0, scale)],
+            'target': outputs[('depth_multi_cam', scale)]
+        }
+        spatio_depth_consistency_loss = torch.abs(loss_args['pred']-loss_args['target'])  # 1,6,1,384,640
+
+        depth_con_mask = spatio_mask * (loss_args['pred'] > 0)  # 1,6,1,384,640
+        return compute_masked_loss(spatio_depth_consistency_loss, depth_con_mask)
+
     def compute_spatial_depth_consistency_loss(self, inputs, target_view, cam=None, scale=None, ref_mask=None, reproj_loss_mask=None):
-        spatio_mask = ref_mask * target_view[('overlap_mask', 0, scale)]
+        spatio_mask = ref_mask * target_view[('overlap_mask', 0, scale)]  # 1,1,384,640
         loss_args = {
             'pred': target_view[('overlap_depth', 0, scale)],
             'target': target_view[('depth', scale)]
         }
-        spatio_depth_consistency_loss = torch.abs(loss_args['pred']-loss_args['target'])
+        spatio_depth_consistency_loss = torch.abs(loss_args['pred']-loss_args['target'])  # 1,1,384,640
 
-        depth_con_mask = spatio_mask * (loss_args['pred']>0)
+        depth_con_mask = spatio_mask * (loss_args['pred'] > 0)  # 1,1,384,640
         if hasattr(self, 'spatial_depth_consistency_margin'):
             margin = self.spatial_depth_consistency_margin
             depth_con_mask*=spatio_depth_consistency_loss<margin
@@ -176,6 +234,36 @@ class MultiCamLoss(SingleCamLoss):
         pose_loss = (trans_loss + 10 * angle_loss) / len(self.frame_ids[1:])
         return pose_loss
 
+    def forward_multi_cam(self, inputs, outputs):
+        loss_dict = {}
+        scale = 0
+        cam_loss = 0.
+        reprojection_loss = self.compute_reproj_loss_multi_cam(inputs, outputs)
+        smooth_loss = self.compute_smooth_loss_multi_cam(inputs, outputs)
+        spatio_loss = self.compute_spatio_loss_multi_cam(inputs, outputs)
+        spatio_tempo_loss = self.compute_spatio_tempo_loss_multi_cam(inputs, outputs,
+                                                           reproj_loss_mask=outputs[('reproj_mask', scale)])
+        if hasattr(self, 'spatial_depth_consistency_loss_weight'):
+            spatial_depth_consistency_loss = self.compute_spatial_depth_consistency_loss_multi_cam(inputs, outputs,
+                                                                reproj_loss_mask=outputs[('reproj_mask', scale)])
+        cam_loss += reprojection_loss
+        cam_loss += self.disparity_smoothness * smooth_loss / (2 ** scale)
+        cam_loss += self.spatio_coeff * spatio_loss + self.spatio_tempo_coeff * spatio_tempo_loss
+        if hasattr(self, 'spatial_depth_consistency_loss_weight'):
+            cam_loss += self.spatial_depth_consistency_loss_weight * spatial_depth_consistency_loss
+
+        loss_dict['reproj_loss'] = reprojection_loss.item()
+        loss_dict['spatio_loss'] = spatio_loss.item()
+        loss_dict['spatio_tempo_loss'] = spatio_tempo_loss.item()
+        loss_dict['smooth'] = smooth_loss.item()
+        if hasattr(self, 'spatial_depth_consistency_loss_weight'):
+            loss_dict['spatial_depth_consistency_loss'] = spatial_depth_consistency_loss.item() * self.spatial_depth_consistency_loss_weight
+
+        self.get_logs_multi_cam(loss_dict, outputs)
+        cam_loss /= len(self.scales)
+        return cam_loss, loss_dict
+
+
     def forward(self, inputs, outputs, cam):
         loss_dict = {}
         cam_loss = 0. # loss across the multi-scale
@@ -195,7 +283,7 @@ class MultiCamLoss(SingleCamLoss):
             spatio_tempo_loss = self.compute_spatio_tempo_loss(inputs, target_view, **kargs)
 
 
-            if self.pose_model == 'fsm' and cam != 0:
+            if self.pose_model == 'fsm' and cam != 0:  # ignore
                 pose_loss = self.compute_pose_con_loss(inputs, outputs, **kargs)
                 cam_loss += self.pose_con_coeff * pose_loss
             else:
@@ -203,9 +291,9 @@ class MultiCamLoss(SingleCamLoss):
 
             if hasattr(self, 'spatial_depth_consistency_loss_weight'):
                 spatial_depth_consistency_loss = self.compute_spatial_depth_consistency_loss(inputs,target_view,**kargs)
-            if hasattr(self, 'sp_tp_recon_con_loss_weight'):
+            if hasattr(self, 'sp_tp_recon_con_loss_weight'):  # ignore
                 sp_tp_recon_con_loss = self.compute_sp_tp_recon_con_loss(inputs, target_view,**kargs)
-            if hasattr(self, 'spatial_depth_aug_smoothness'):
+            if hasattr(self, 'spatial_depth_aug_smoothness'):  # ignore
                 spatial_depth_aug_smooth_loss = self.compute_spatial_depth_aug_smooth_loss(inputs,target_view,**kargs)
 
             cam_loss += reprojection_loss
