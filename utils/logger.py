@@ -175,35 +175,35 @@ class Logger:
             
             plot_tb(writer, step, inputs[('color', 0, scale)][:, cam_id, ...], set_tb_title('cam', cam_id)) # frame_id 0            
             plot_disp_tb(writer, step, target_view[('disp', scale)], set_tb_title('cam', cam_id, 'disp')) # disparity
-            plot_tb(writer, step, target_view[('reproj_loss', scale)], set_tb_title('cam', cam_id, 'reproj')) # reprojection image
-            plot_tb(writer, step, target_view[('reproj_mask', scale)], set_tb_title('cam', cam_id, 'reproj_mask')) # reprojection mask
+            plot_tb(writer, step, outputs[('reproj_loss', scale)][:, cam_id], set_tb_title('cam', cam_id, 'reproj')) # reprojection image
+            plot_tb(writer, step, outputs[('reproj_mask', scale)][:, cam_id], set_tb_title('cam', cam_id, 'reproj_mask')) # reprojection mask
             plot_tb(writer,  step, inputs['mask'][:, cam_id, ...], set_tb_title('cam', cam_id, 'self_occ_mask'))
             for frame_id in self.frame_ids:
                 if frame_id == 0:
                     continue
-                plot_norm_tb(writer, step, target_view[('color', frame_id, scale)],
+                plot_norm_tb(writer, step, outputs[('color', frame_id, scale)][:, cam_id],
                              set_tb_title('cam', cam_id, 'pred_', frame_id))
 
             if self.spatio:
-                plot_norm_tb(writer, step, target_view[('overlap', 0, scale)], set_tb_title('cam', cam_id, 'sp'))
-                plot_tb(writer, step, target_view[('overlap_mask', 0, scale)], set_tb_title('cam', cam_id, 'sp_mask'))
-                plot_tb(writer, step, target_view[('sp_loss', 0, scale)]*target_view[('overlap_mask', 0, scale)],set_tb_title('cam', cam_id, 'sp_loss'))  # reprojection image
+                plot_norm_tb(writer, step, outputs[('overlap', 0, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp'))
+                plot_tb(writer, step, outputs[('overlap_mask', 0, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_mask'))
+                plot_tb(writer, step, outputs[('sp_loss', 0, scale)][:, cam_id]*outputs[('overlap_mask', 0, scale)][:, cam_id],set_tb_title('cam', cam_id, 'sp_loss'))  # reprojection image
                 
             if self.spatio_temporal:
                 for frame_id in self.frame_ids:
                     if frame_id == 0:
                         continue
-                    plot_norm_tb(writer, step, target_view[('overlap', frame_id, scale)], set_tb_title('cam', cam_id, 'sp_tm_', frame_id))
-                    plot_tb(writer, step, target_view[('overlap_mask', frame_id, scale)], set_tb_title('cam', cam_id, 'sp_tm_mask_', frame_id))
+                    plot_norm_tb(writer, step, outputs[('overlap', frame_id, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_tm_', frame_id))
+                    plot_tb(writer, step, outputs[('overlap_mask', frame_id, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_tm_mask_', frame_id))
 
             if hasattr(self,'spatial_depth_consistency_loss_weight'):
-                plot_disp_tb(writer, step, target_view[('overlap_depth', 0, scale)], set_tb_title('cam', cam_id, 'sp_con'))
+                plot_disp_tb(writer, step, outputs[('overlap_depth', 0, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_con'))
 
             if hasattr(self, 'sp_tp_recon_con_loss_weight'):
                 for frame_id in self.frame_ids:
                     if frame_id == 0:
                         continue
-                    plot_tb(writer, step, target_view[('sp_tp_recon_con_loss', scale,frame_id)],set_tb_title('cam', cam_id, 'sp_tp_recon_con_loss'))  # reprojection image
+                    plot_tb(writer, step, outputs[('sp_tp_recon_con_loss', scale,frame_id)][:, cam_id],set_tb_title('cam', cam_id, 'sp_tp_recon_con_loss'))  # reprojection image
                     
             if self.aug_depth:
                 plot_disp_tb(writer, step, target_view[('disp', scale, 'aug')], set_tb_title('view_aug', cam_id))                

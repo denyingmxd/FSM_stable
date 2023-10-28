@@ -1,7 +1,9 @@
 # Copyright (c) 2023 42dot. All rights reserved.
 import torch
 
-from .loss_util import compute_photometric_loss, compute_edg_smooth_loss, compute_masked_loss, compute_auto_masks
+from .loss_util import (compute_photometric_loss, compute_edg_smooth_loss, compute_masked_loss,
+                        compute_auto_masks, compute_photometric_loss_multi_cam, compute_auto_masks_multi_cam,
+                        compute_edg_smooth_loss_multi_cam)
 from .base_loss import BaseLoss
 
 _EPSILON = 0.00001
@@ -28,8 +30,8 @@ class SingleCamLoss(BaseLoss):
                 compute_photometric_loss(**reproj_loss_args)
             )                
             
-        reprojection_losses = torch.cat(reprojection_losses, 1)
-        reprojection_loss, _ = torch.min(reprojection_losses, dim=1, keepdim=True)
+        reprojection_losses = torch.cat(reprojection_losses, 1)  # 1,2,384,640
+        reprojection_loss, _ = torch.min(reprojection_losses, dim=1, keepdim=True)  # 1,1,384,640
         
         identity_reprojection_losses = []
         for frame_id in self.frame_ids[1:]:
@@ -42,29 +44,75 @@ class SingleCamLoss(BaseLoss):
             )
 
         identity_reprojection_losses = torch.cat(identity_reprojection_losses, 1)
-        identity_reprojection_losses = identity_reprojection_losses \
-            + _EPSILON * torch.randn(identity_reprojection_losses.shape).to(self.rank)
-        identity_reprojection_loss, _ = torch.min(identity_reprojection_losses, dim=1, keepdim=True)             
+        identity_reprojection_loss, _ = torch.min(identity_reprojection_losses, dim=1, keepdim=True)  # 1,1,384,640
 
         
         # find minimum losses
-        reprojection_auto_mask = compute_auto_masks(reprojection_loss, identity_reprojection_loss)
-        reprojection_auto_mask *= ref_mask
+        reprojection_auto_mask = compute_auto_masks(reprojection_loss, identity_reprojection_loss)  # 1,1,384,640
+        reprojection_auto_mask *= ref_mask  # 1,1,384,640
 
         target_view[('reproj_loss', scale)] = reprojection_auto_mask * reprojection_loss
         target_view[('reproj_mask', scale)] = reprojection_auto_mask
 
         return compute_masked_loss(reprojection_loss, reprojection_auto_mask)
 
+    def compute_reproj_loss_multi_cam(self, inputs, outputs, scale=0):
+        """
+        This function computes reprojection loss using auto mask.
+        """
+        reprojection_losses = []
+        for frame_id in self.frame_ids[1:]:
+            reproj_loss_args = {
+                'pred': outputs[('color', frame_id, 0)],
+                'target': inputs['color', 0, 0]
+            }
+            reprojection_losses.append(
+                compute_photometric_loss_multi_cam(**reproj_loss_args)
+            )
+
+        reprojection_losses = torch.cat(reprojection_losses, 2)
+        reprojection_loss, _ = torch.min(reprojection_losses, dim=2, keepdim=True)
+
+        identity_reprojection_losses = []
+        for frame_id in self.frame_ids[1:]:
+            identity_reproj_loss_args = {
+                'pred': inputs[('color', frame_id, 0)],
+                'target': inputs['color', 0, 0]
+            }
+            identity_reprojection_losses.append(
+                compute_photometric_loss_multi_cam(**identity_reproj_loss_args)
+            )
+
+        identity_reprojection_losses = torch.cat(identity_reprojection_losses, 2)
+        identity_reprojection_loss, _ = torch.min(identity_reprojection_losses, dim=2, keepdim=True)
+
+        # find minimum losses
+        reprojection_auto_mask = compute_auto_masks_multi_cam(reprojection_loss, identity_reprojection_loss)
+        reprojection_auto_mask *= inputs['mask']
+
+        outputs[('reproj_loss', scale)] = reprojection_auto_mask * reprojection_loss
+        outputs[('reproj_mask', scale)] = reprojection_auto_mask
+
+        return compute_masked_loss(reprojection_loss, reprojection_auto_mask)
+
+    def compute_smooth_loss_multi_cam(self, inputs, outputs, scale=0):
+        """
+        This function computes edge-aware smoothness loss for the disparity map.
+        """
+        color = inputs['color', 0, scale]  # 1,6,3,384,640
+        disp = outputs[('depth_multi_cam', scale)]  # 1,6,1,384,640
+        mean_disp = disp.mean(-2, True).mean(-1, True)  # 1,6,1,1,1
+        norm_disp = disp / (mean_disp + 1e-8)  # 1,6,1,384,640
+        return compute_edg_smooth_loss_multi_cam(color, norm_disp)
 
     def compute_smooth_loss(self, inputs, target_view, cam = 0, scale = 0, ref_mask=None):
         """
         This function computes edge-aware smoothness loss for the disparity map.
         """
-        color = inputs['color', 0, scale][:, cam, ...]
-        disp = target_view[('disp', scale)]
-        mean_disp = disp.mean(2, True).mean(3, True)
-        norm_disp = disp / (mean_disp + 1e-8)
+        color = inputs['color', 0, scale][:, cam, ...]  # 1,3,384,640
+        disp = target_view[('disp', scale)]  # 1,1,384,640
+        mean_disp = disp.mean(2, True).mean(3, True)  # 1,1,1,1
+        norm_disp = disp / (mean_disp + 1e-8)  # 1,1,384,640
         return compute_edg_smooth_loss(color, norm_disp)
 
 

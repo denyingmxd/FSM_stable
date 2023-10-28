@@ -41,6 +41,23 @@ class BaseLoss(nn.Module):
 
 
         return loss_dict
+
+    def get_logs_multi_cam(self, loss_dict, output):
+        """
+        This function logs depth and pose information for monitoring training process.
+        """
+        # log statistics
+        depth_log = output[('depth_multi_cam', 0)].clone().detach()
+        loss_dict['depth/mean'] = depth_log.mean()
+        loss_dict['depth/max'] = depth_log.max()
+        loss_dict['depth/min'] = depth_log.min()
+
+        pose_t = output[('cam',0)][('cam_T_cam', 0, -1)].clone().detach()
+        loss_dict['pose/tx'] = pose_t[:, 0, 3].abs().mean()
+        loss_dict['pose/ty'] = pose_t[:, 1, 3].abs().mean()
+        loss_dict['pose/tz'] = pose_t[:, 2, 3].abs().mean()
+
+        return loss_dict
     
     def forward(self, *args, **kwargs):
         raise NotImplementedError('Not implemented for BaseLoss')   
