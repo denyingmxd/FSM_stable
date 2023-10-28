@@ -20,6 +20,19 @@ class MultiCamLoss(SingleCamLoss):
         # self occlusion mask * overlap region mask
         spatio_mask = ref_mask * target_view[('overlap_mask', 0, scale)]
 
+
+        if hasattr(self,'vidar_mask') and self.vidar_mask=='vertical':
+            b, c, h, w = spatio_mask.shape
+            vidar_horizontal_mask = torch.ones_like(spatio_mask)
+            vidar_horizontal_mask[:, :, :int(0.15 * h), :] = 0
+            vidar_horizontal_mask[:, :, int(0.75 * h):, :] = 0
+            spatio_mask *= vidar_horizontal_mask
+        if hasattr(self,'vidar_mask') and self.vidar_mask=='horizontal':
+            b, c, h, w = spatio_mask.shape
+            vidar_vertical_mask = torch.ones_like(spatio_mask)
+            vidar_vertical_mask[:, :, :, :int(0.15 * w)] = 0
+            vidar_vertical_mask[:, :, :, int(0.75 * w):] = 0
+            spatio_mask *= vidar_vertical_mask
         loss_args = {
             'pred': target_view[('overlap', 0, scale)],
             'target': inputs['color', 0, 0][:, cam, ...]
@@ -41,6 +54,19 @@ class MultiCamLoss(SingleCamLoss):
             pred_mask = ref_mask * target_view[('overlap_mask', frame_id, scale)]
             pred_mask = pred_mask * reproj_loss_mask
 
+            if hasattr(self, 'vidar_mask') and self.vidar_mask == 'vertical':
+                b, c, h, w = pred_mask.shape
+                vidar_horizontal_mask = torch.ones_like(pred_mask)
+                vidar_horizontal_mask[:, :, :int(0.15 * h), :] = 0
+                vidar_horizontal_mask[:, :, int(0.75 * h):, :] = 0
+                pred_mask *= vidar_horizontal_mask
+            if hasattr(self, 'vidar_mask') and self.vidar_mask == 'horizontal':
+                b, c, h, w = pred_mask.shape
+                vidar_vertical_mask = torch.ones_like(pred_mask)
+                vidar_vertical_mask[:, :, :, :int(0.15 * w)] = 0
+                vidar_vertical_mask[:, :, :, int(0.75 * w):] = 0
+                pred_mask *= vidar_vertical_mask
+
 
             loss_args = {
                 'pred': target_view[('overlap', frame_id, scale)],
@@ -59,12 +85,8 @@ class MultiCamLoss(SingleCamLoss):
         spatio_tempo_loss, reprojection_loss_min_index = torch.min(spatio_tempo_losses, dim=1, keepdim=True)
         spatio_tempo_mask, _ = torch.max(spatio_tempo_masks.float(), dim=1, keepdim=True)
 
-        if hasattr(self,'sptp_recon_con_type'):
-            if self.sptp_recon_con_type=='combine':
-                assert self.frame_ids[1:]==[-1,1]
-                target_view[('stp_reproj_combined', scale)] = \
-                    target_view[('overlap', -1, scale)]*(reprojection_loss_min_index==0)*spatio_tempo_mask+ \
-                    target_view[('overlap', 1, scale)] * (reprojection_loss_min_index == 1)*spatio_tempo_mask
+        target_view[('overlap_mask', -1, scale)] = spatio_tempo_mask * target_view[('overlap_mask', -1, scale)]
+        target_view[('overlap_mask', 1, scale)] = spatio_tempo_mask * target_view[('overlap_mask', 1, scale)]
 
         return compute_masked_loss(spatio_tempo_loss, spatio_tempo_mask)
 
@@ -119,15 +141,6 @@ class MultiCamLoss(SingleCamLoss):
             return sp_tp_recon_con_loss/len(self.frame_ids[1:])
 
 
-    def compute_depth_smooth_loss(self, inputs, target_view, cam = 0, scale = 0, ref_mask=None):
-        """
-        This function computes edge-aware smoothness loss for the disparity map.
-        """
-        color = inputs['color', 0, scale][:, cam, ...]
-        disp = target_view[('depth', scale)]
-        mean_disp = disp.mean(2, True).mean(3, True)
-        norm_disp = disp / (mean_disp + 1e-8)
-        return compute_edg_smooth_loss(color, norm_disp)
 
     def compute_pose_con_loss(self, inputs, outputs, cam=None, scale=None, ref_mask=None, reproj_loss_mask=None) :
         """
@@ -174,10 +187,8 @@ class MultiCamLoss(SingleCamLoss):
             }
 
             reprojection_loss = self.compute_reproj_loss(inputs, target_view, **kargs)
-            if hasattr(self,'smooth_depth') and self.smooth_depth:
-                smooth_loss = self.compute_depth_smooth_loss(inputs, target_view, **kargs)
-            else:
-                smooth_loss = self.compute_smooth_loss(inputs, target_view, **kargs)
+
+            smooth_loss = self.compute_smooth_loss(inputs, target_view, **kargs)
             spatio_loss = self.compute_spatio_loss(inputs, target_view, **kargs)
 
             kargs['reproj_loss_mask'] = target_view[('reproj_mask', scale)]

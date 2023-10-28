@@ -1,8 +1,8 @@
 ddp:
-  ddp_enable: False
+  ddp_enable: True
   world_size: 4
   gpus: [0,1,2,3]
-  port: '12355'
+  port: '12357'
 
 model:
   num_layers: 18
@@ -50,7 +50,7 @@ training:
   spatio_temporal: True
 
   ## Intensity align
-  intensity_align: True
+  intensity_align: False
   intensity_align_ls: False
   intensity_align_ls2: False
   temporal_border: True

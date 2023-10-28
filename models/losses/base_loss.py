@@ -20,7 +20,7 @@ class BaseLoss(nn.Module):
     def init_attrib(self, cfg):
         for attr in cfg.keys():
             for k, v in cfg[attr].items():
-                if k == 'scales' or k=='frame_ids' or k =='pose_model' or k=='temporal_mask' or k=='with_eq' or k=='smooth_depth':
+                if k == 'scales' or k=='frame_ids' or k =='pose_model' or k=='temporal_mask' or k=='with_eq' or k=='smooth_depth' or k=='vidar_mask':
                     setattr(self, k, v)
         
     def get_logs(self, loss_dict, output, cam):

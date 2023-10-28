@@ -1,8 +1,8 @@
 ddp:
-  ddp_enable: False
+  ddp_enable: True
   world_size: 4
   gpus: [0,1,2,3]
-  port: '12355'
+  port: '12356'
 
 model:
   num_layers: 18
