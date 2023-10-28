@@ -298,7 +298,6 @@ class ViewRendering(nn.Module):
                         source_scale,
                     )
 
-
                     if self.intensity_align:
                         warped_img = self.get_norm_image_single(
                             ref_color,

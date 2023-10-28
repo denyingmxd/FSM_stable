@@ -53,9 +53,6 @@ training:
   intensity_align: True
   temporal_intensity_align: False
   temporal_border: True
-  with_eq: False
-  eq_type: 1
-
 
   ## Focal length scaling
   focal_length_scale: 300

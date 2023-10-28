@@ -35,18 +35,14 @@ class MultiCamLoss(SingleCamLoss):
         This function computes spatial loss.
         """
         # self occlusion mask * overlap region mask
-        spatio_mask = ref_mask * target_view[('overlap_mask', 0, scale)]  # 1,1,384,640
-        if self.with_eq:
-            loss_args = {
-                'pred': target_view[('overlap', 0, scale)],
-                'target': inputs['color_eq',0, 0][:,cam, ...]
-            }
-        else:
-            loss_args = {
-                'pred': target_view[('overlap', 0, scale)],
-                'target': inputs['color', 0, 0][:, cam, ...]
-            }
-        spatio_loss = compute_photometric_loss(**loss_args)  # 1,1,384,640
+
+        spatio_mask = ref_mask * target_view[('overlap_mask', 0, scale)]
+
+        loss_args = {
+            'pred': target_view[('overlap', 0, scale)],
+            'target': inputs['color', 0, 0][:, cam, ...]
+        }
+        spatio_loss = compute_photometric_loss(**loss_args)
 
         target_view[('overlap_mask', 0, scale)] = spatio_mask
         target_view[('sp_loss', 0, scale)] = spatio_loss
@@ -93,16 +89,11 @@ class MultiCamLoss(SingleCamLoss):
             pred_mask = ref_mask * target_view[('overlap_mask', frame_id, scale)]  # 1,1,384,640
             pred_mask = pred_mask * reproj_loss_mask  # 1,1,384,640
 
-            if self.with_eq:
-                loss_args = {
-                    'pred': target_view[('overlap', frame_id, scale)],
-                    'target': inputs['color_eq', 0, 0][:, cam, ...]
-                }
-            else:
-                loss_args = {
-                    'pred': target_view[('overlap', frame_id, scale)],
-                    'target': inputs['color', 0, 0][:, cam, ...]
-                }
+
+            loss_args = {
+                'pred': target_view[('overlap', frame_id, scale)],
+                'target': inputs['color', 0, 0][:, cam, ...]
+            }
 
             spatio_tempo_losses.append(compute_photometric_loss(**loss_args))
             spatio_tempo_masks.append(pred_mask)
