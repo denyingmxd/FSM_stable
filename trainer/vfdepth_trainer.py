@@ -59,8 +59,8 @@ class VFDepthTrainer:
         """
         # torch.autograd.set_detect_anomaly(True)
         model.set_train()
-        a=time.time()
-        times=[]
+        a = time.time()
+        times = 0
         for batch_idx, inputs in enumerate(data_loader):
             before_op_time = time.time()
             model.optimizer.zero_grad(set_to_none=True)
@@ -73,14 +73,13 @@ class VFDepthTrainer:
             # #
             # losses['spatio_tempo_loss'].backward(retain_graph=True)
 
-
             losses['total_loss'].backward()
             model.optimizer.step()
             after_op_time = time.time()
             import numpy as np
             if self.rank == 0:
-                times.append(after_op_time - before_op_time)
-                print(batch_idx, np.sum(times)/ (1 + batch_idx), (time.time() - a) / (1 + batch_idx))
+                times += (after_op_time - before_op_time)
+                print(batch_idx, times / (1 + batch_idx), (time.time() - a) / (1 + batch_idx))
 
                 self.logger.update(
                     'train',
@@ -148,7 +147,6 @@ class VFDepthTrainer:
             # visualize synthesized depth maps
             if self.syn_visualize and batch_idx < self.syn_idx:
                 continue
-                
             outputs, _ = model.process_batch(inputs, self.rank)
 
             if hasattr(self,'post_process'):
@@ -158,7 +156,6 @@ class VFDepthTrainer:
                 for cam in range(self.num_cams):
                     outputs['cam', cam][('depth', 0)] = self.batch_post_process_disparity_torch(outputs['cam', cam][('depth', 0)],hflip(outputs_flipped['cam', cam][('depth', 0)]))
                     # outputs['cam', cam][('depth', 0)] = self.post_process_inv_depth(outputs['cam', cam][('depth', 0)],outputs_flipped['cam', cam][('depth', 0)])
-
             depth_eval_metric, depth_eval_median,depth_eval_metric_cams = self.logger.compute_depth_losses(inputs, outputs)
             
             for key in self.depth_metric_names:

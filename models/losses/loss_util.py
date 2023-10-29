@@ -31,6 +31,11 @@ def compute_auto_masks_multi_cam(reprojection_loss, identity_reprojection_loss):
         reprojection_loss_mask = (idxs == 0).float()
     return reprojection_loss_mask
 
+def compute_masked_loss_multi_cam(loss, mask):
+    """
+    This function masks losses while avoiding zero division.
+    """
+    return ((loss * mask).sum(dim=[0, 2, 3, 4]) / (mask.sum(dim=[0, 2, 3, 4]) + 1e-8)).mean()
 
 def compute_masked_loss(loss, mask):    
     """

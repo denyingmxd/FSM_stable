@@ -4,10 +4,9 @@ from pytorch3d.transforms import matrix_to_euler_angles
 import matplotlib.pyplot as plt
 
 from .loss_util import (compute_photometric_loss, compute_masked_loss,
-                        compute_photometric_loss_multi_cam)
+                        compute_photometric_loss_multi_cam, compute_masked_loss_multi_cam)
 
 from .single_cam_loss import SingleCamLoss
-from .loss_util import compute_photometric_loss, compute_edg_smooth_loss, compute_masked_loss
 
 
 class MultiCamLoss(SingleCamLoss):
@@ -31,7 +30,7 @@ class MultiCamLoss(SingleCamLoss):
 
         outputs[('overlap_mask', 0, scale)] = spatio_mask
         outputs[('sp_loss', 0, scale)] = spatio_loss
-        return compute_masked_loss(spatio_loss, spatio_mask)
+        return compute_masked_loss_multi_cam(spatio_loss, spatio_mask)
 
     def compute_spatio_loss(self, inputs, target_view, cam=None, scale=None, ref_mask=None):
         """
@@ -92,7 +91,7 @@ class MultiCamLoss(SingleCamLoss):
         spatio_tempo_loss, reprojection_loss_min_index = torch.min(spatio_tempo_losses, dim=2, keepdim=True)  # 1,6,1,384,640
         spatio_tempo_mask, _ = torch.max(spatio_tempo_masks.float(), dim=2, keepdim=True)  # 1,6,1,384,640
 
-        return compute_masked_loss(spatio_tempo_loss, spatio_tempo_mask)
+        return compute_masked_loss_multi_cam(spatio_tempo_loss, spatio_tempo_mask)
 
     def compute_spatio_tempo_loss(self, inputs, target_view, cam=None, scale=None, ref_mask=None, reproj_loss_mask=None) :
         """
@@ -150,7 +149,7 @@ class MultiCamLoss(SingleCamLoss):
         spatio_depth_consistency_loss = torch.abs(loss_args['pred']-loss_args['target'])  # 1,6,1,384,640
 
         depth_con_mask = spatio_mask * (loss_args['pred'] > 0)  # 1,6,1,384,640
-        return compute_masked_loss(spatio_depth_consistency_loss, depth_con_mask)
+        return compute_masked_loss_multi_cam(spatio_depth_consistency_loss, depth_con_mask)
 
     def compute_spatial_depth_consistency_loss(self, inputs, target_view, cam=None, scale=None, ref_mask=None, reproj_loss_mask=None):
         spatio_mask = ref_mask * target_view[('overlap_mask', 0, scale)]  # 1,1,384,640

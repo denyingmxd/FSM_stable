@@ -161,7 +161,7 @@ class Projection(nn.Module):
         norm_points2D.sub_(0.5).mul_(2)
         return norm_points2D
 
-    def forward_temp(self, depth, T, bp_invK, rp_K):
+    def forward_multi_cam(self, depth, T, bp_invK, rp_K):
         cam_points = self.backproject_multi_cam(bp_invK, depth)  # 1, 6, 4, 245760
 
         pix_coords = self.reproject_multi_cam(rp_K, cam_points, T)
