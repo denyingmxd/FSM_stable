@@ -80,7 +80,7 @@ class VFDepthTrainer:
             import numpy as np
             if self.rank == 0:
                 times.append(after_op_time - before_op_time)
-                print(batch_idx, np.sum(times),after_op_time - before_op_time, (time.time() - a) / (1 + batch_idx))
+                print(batch_idx, np.sum(times)/ (1 + batch_idx), (time.time() - a) / (1 + batch_idx))
 
                 self.logger.update(
                     'train',
