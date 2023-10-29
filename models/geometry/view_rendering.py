@@ -140,12 +140,15 @@ class ViewRendering(nn.Module):
         depth_warped[~valid_depth_max] = max_depth
         return depth_warped, (~invalid_mask).float() * mask_warped * valid_depth_min * valid_depth_max
 
-    def get_virtual_image_multi_cam(self, color, mask, depth, invK, K, cam_T_cam, scale=0, img_warp_pad_mode='zeros'):
+    def get_virtual_image_multi_cam(self, color, mask, depth, invK, K, cam_T_cam, scale=0, img_warp_pad_mode='zeros', cam_points=None):
         """
                 This function warps source image to target image using backprojection and reprojection process.
                 """
         # do reconstruction for target from source
-        pix_coords = self.project.forward_temp(depth, cam_T_cam, invK, K)
+        if cam_points is None:
+            pix_coords = self.project.forward_multi_cam(depth, cam_T_cam, invK, K)
+        else:
+            pix_coords = self.project.reproject_multi_cam(K, cam_points, cam_T_cam)
         pix_coords = pix_coords.view(-1, *pix_coords.shape[-3:])
 
         img_warped = F.grid_sample(color.squeeze(0), pix_coords, mode='bilinear', padding_mode=img_warp_pad_mode, align_corners=True)
@@ -175,14 +178,16 @@ class ViewRendering(nn.Module):
         ref_K = inputs[('K', scale)]
         spatio_left_order = [1, 3, 0, 5, 2, 4]
         spatio_right_order = [2, 0, 4, 1, 5, 3]
+        cam_points = self.project.backproject_multi_cam(ref_invK, ref_depth)
 
         # 1.temporal
         for frame_id in self.frame_ids[1:]:
             spt_rel_pose = spt_rel_poses[('temporal', frame_id)]
             warped_img, warped_mask = self.get_virtual_image_multi_cam(inputs['color', frame_id, scale], inputs['mask'],
-                                                                  ref_depth, ref_invK, inputs[('K', scale)],
-                                                                  spt_rel_pose,
-                                                                  scale, img_warp_pad_mode='border')
+                                                                       ref_depth, ref_invK, inputs[('K', scale)],
+                                                                       spt_rel_pose,
+                                                                       scale, img_warp_pad_mode='border',
+                                                                       cam_points=cam_points)
             self.build_cam_outputs(outputs, warped_img, warped_mask, 'color', frame_id)
 
         # 2.spatio and temporal
@@ -198,8 +203,9 @@ class ViewRendering(nn.Module):
                 src_color = inputs['color', frame_id, scale][:, order, ...]
                 src_mask = ref_mask[:, order, ...]
                 src_K = ref_K[:, order, ...]
-                warped_img, warped_mask = self.get_virtual_image_multi_cam(src_color, src_mask, ref_depth, ref_invK, src_K,
-                                                                      spt_rel_pose, scale)
+                warped_img, warped_mask = self.get_virtual_image_multi_cam(src_color, src_mask, ref_depth, ref_invK,
+                                                                           src_K,
+                                                                           spt_rel_pose, scale, cam_points=cam_points)
                 if self.intensity_align:
                     warped_img = self.get_norm_image_multi_cam(inputs['color', frame_id, scale], inputs['mask'],
                                                             warped_img, warped_mask)

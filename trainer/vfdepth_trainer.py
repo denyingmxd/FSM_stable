@@ -59,8 +59,8 @@ class VFDepthTrainer:
         """
         # torch.autograd.set_detect_anomaly(True)
         model.set_train()
-        a=time.time()
-        times=[]
+        a = time.time()
+        times = 0
         for batch_idx, inputs in enumerate(data_loader):
             before_op_time = time.time()
             model.optimizer.zero_grad(set_to_none=True)
@@ -70,8 +70,8 @@ class VFDepthTrainer:
             after_op_time = time.time()
             import numpy as np
             if self.rank == 0:
-                times.append(after_op_time - before_op_time)
-                print(batch_idx, np.sum(times),after_op_time - before_op_time, (time.time() - a) / (1 + batch_idx))
+                times += (after_op_time - before_op_time)
+                print(batch_idx, times / (1 + batch_idx), (time.time() - a) / (1 + batch_idx))
 
                 self.logger.update(
                     'train',

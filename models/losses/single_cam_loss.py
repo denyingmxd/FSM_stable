@@ -3,7 +3,7 @@ import torch
 
 from .loss_util import (compute_photometric_loss, compute_edg_smooth_loss, compute_masked_loss,
                         compute_auto_masks, compute_photometric_loss_multi_cam, compute_auto_masks_multi_cam,
-                        compute_edg_smooth_loss_multi_cam)
+                        compute_edg_smooth_loss_multi_cam, compute_masked_loss_multi_cam)
 from .base_loss import BaseLoss
 
 _EPSILON = 0.00001
@@ -93,14 +93,14 @@ class SingleCamLoss(BaseLoss):
         outputs[('reproj_loss', scale)] = reprojection_auto_mask * reprojection_loss
         outputs[('reproj_mask', scale)] = reprojection_auto_mask
 
-        return compute_masked_loss(reprojection_loss, reprojection_auto_mask)
+        return compute_masked_loss_multi_cam(reprojection_loss, reprojection_auto_mask)
 
     def compute_smooth_loss_multi_cam(self, inputs, outputs, scale=0):
         """
         This function computes edge-aware smoothness loss for the disparity map.
         """
         color = inputs['color', 0, scale]  # 1,6,3,384,640
-        disp = outputs[('depth_multi_cam', scale)]  # 1,6,1,384,640
+        disp = torch.concat([outputs[('cam', i)][('disp', scale)] for i in range(6)], dim=0).unsqueeze(0) # 1,6,1,384,640
         mean_disp = disp.mean(-2, True).mean(-1, True)  # 1,6,1,1,1
         norm_disp = disp / (mean_disp + 1e-8)  # 1,6,1,384,640
         return compute_edg_smooth_loss_multi_cam(color, norm_disp)
