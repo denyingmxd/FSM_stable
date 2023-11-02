@@ -8,6 +8,8 @@ from .loss_util import (compute_photometric_loss, compute_masked_loss,
 
 from .single_cam_loss import SingleCamLoss
 
+import kornia
+
 
 class MultiCamLoss(SingleCamLoss):
     """
@@ -26,6 +28,7 @@ class MultiCamLoss(SingleCamLoss):
             'pred': outputs[('overlap', 0, scale)],
             'target': inputs['color', 0, 0]
         }
+
         spatio_loss = compute_photometric_loss_multi_cam(**loss_args)  # 1,6,1,384,640
 
         outputs[('overlap_mask', 0, scale)] = spatio_mask

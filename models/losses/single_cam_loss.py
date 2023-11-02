@@ -100,7 +100,7 @@ class SingleCamLoss(BaseLoss):
         This function computes edge-aware smoothness loss for the disparity map.
         """
         color = inputs['color', 0, scale]  # 1,6,3,384,640
-        disp = torch.concat([outputs[('cam', i)][('disp', scale)] for i in range(6)], dim=0).unsqueeze(0) # 1,6,1,384,640
+        disp = torch.concat([outputs[('cam', i)][('disp', scale)].unsqueeze(1) for i in range(6)], dim=1)  # 1,6,1,384,640
         mean_disp = disp.mean(-2, True).mean(-1, True)  # 1,6,1,1,1
         norm_disp = disp / (mean_disp + 1e-8)  # 1,6,1,384,640
         return compute_edg_smooth_loss_multi_cam(color, norm_disp)

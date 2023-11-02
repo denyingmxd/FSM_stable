@@ -164,6 +164,10 @@ class ViewRendering(nn.Module):
             pix_coords = self.project.reproject_multi_cam(K, cam_points, cam_T_cam)
         pix_coords = pix_coords.view(-1, *pix_coords.shape[-3:])
 
+        B, D, C, H, W = color.shape
+        color = color.view(-1, *color.shape[-3:])
+        mask = mask.view(-1, *mask.shape[-3:])
+
         img_warped = F.grid_sample(color.squeeze(0), pix_coords, mode='bilinear', padding_mode=img_warp_pad_mode, align_corners=True)
         mask_warped = F.grid_sample(mask.squeeze(0), pix_coords, mode='nearest', padding_mode='zeros', align_corners=True)
 
@@ -180,11 +184,11 @@ class ViewRendering(nn.Module):
                                         pix_coords < -1).sum(dim=1, keepdim=True) > 0
         mask_warped = ((~invalid_mask).float() * mask_warped)
 
-        return img_warped.unsqueeze(0), mask_warped.unsqueeze(0)
+        return img_warped.view(B, D, C, H, W), mask_warped.view(B, D, 1, H, W)
 
     def pred_all_cam_imgs(self, inputs, outputs, spt_rel_poses):
         scale = 0
-        ref_depth = torch.concat([outputs[('cam', i)][('depth', scale)] for i in range(6)], dim=0).unsqueeze(0)  # 1,6,1,384,640
+        ref_depth = torch.concat([outputs[('cam', i)][('depth', scale)].unsqueeze(1) for i in range(6)], dim=1)  # 1,6,1,384,640
         outputs[('depth_multi_cam', scale)] = ref_depth
         ref_mask = inputs['mask']
         ref_invK = inputs[('inv_K', scale)]  # 1,6,4,4

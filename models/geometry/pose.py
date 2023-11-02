@@ -143,10 +143,10 @@ class Pose:
         This function computes spatio & spatio-temporal transformation for images from different viewpoints.
         """
         ref_ext = inputs['extrinsics']  # 1,6,4,4
-        cam_T_cam_past = [outputs[('cam', i)][('cam_T_cam', 0, -1)] for i in range(6)]
-        cam_T_cam_past = torch.concat(cam_T_cam_past, dim=0)  # 6,4,4
-        cam_T_cam_future = [outputs[('cam', i)][('cam_T_cam', 0, 1)] for i in range(6)]
-        cam_T_cam_future = torch.concat(cam_T_cam_future, dim=0)  # 6,4,4
+        cam_T_cam_past = [outputs[('cam', i)][('cam_T_cam', 0, -1)].unsqueeze(1) for i in range(6)]
+        cam_T_cam_past = torch.concat(cam_T_cam_past, dim=1)  # 6,4,4
+        cam_T_cam_future = [outputs[('cam', i)][('cam_T_cam', 0, 1)].unsqueeze(1) for i in range(6)]
+        cam_T_cam_future = torch.concat(cam_T_cam_future, dim=1)  # 6,4,4
         spatio_left_order = [1, 3, 0, 5, 2, 4]
         spatio_right_order = [2, 0, 4, 1, 5, 3]
         results = {}
