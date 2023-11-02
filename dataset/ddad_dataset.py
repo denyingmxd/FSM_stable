@@ -47,6 +47,15 @@ def mask_loader_scene(path, mask_idx, cam):
         with Image.open(f) as img:
             return img.convert('L')
 
+def mask_loader_scene_surrounddepth(path, cam, scene_name):
+    """
+    This function loads mask that correspondes to the scene and camera.
+    """
+    fname = os.path.join(path,cam,scene_name,'mask.jpg' )
+    with open(fname, 'rb') as f:
+        with Image.open(f) as img:
+            return img.convert('L')
+
 
 def align_dataset(sample, scales, contexts,has_context):
     """
@@ -115,10 +124,11 @@ class DDADdataset(torch.utils.data.Dataset):
         scale_range = kwargs['scale_range']
         self.scales = np.arange(scale_range + 2)
         ## self-occ masks
+        self.cfg = cfg
         self.with_mask = kwargs['with_mask']
         self.with_pose = kwargs['with_pose']
         self.num_cams = len(self.cameras)
-        self.mask_loader = mask_loader_scene
+        self.mask_loader =  mask_loader_scene_surrounddepth if self.cfg['data'].get('use_surround_depth_mask') else mask_loader_scene
         self.mode=mode
         self.with_depth = self.mode=='val'
         self.with_input_depth = False
@@ -128,20 +138,29 @@ class DDADdataset(torch.utils.data.Dataset):
             with open('./{}.txt'.format('vis'), 'r') as f:
                 self.filenames = f.readlines()
         else:
-            with open('/data/laiyan/airs/SurroundDepth/datasets/ddad/{}.txt'.format(mode), 'r') as f:
+            if cfg['data'].get('use_r3d3_stage1'):
+                with open("/data/laiyan/codes/FSM_stable/dataset/ddad/{}_r3d3.txt".format(mode), 'r') as f:
+                    # self.filenames = list(set(f.readlines()))
+                    self.filenames = f.readlines()
+            else:
+                with open('/data/laiyan/airs/SurroundDepth/datasets/ddad/{}.txt'.format(mode), 'r') as f:
                 # self.filenames = list(set(f.readlines()))
-                self.filenames = f.readlines()
+                    self.filenames = f.readlines()
 
         self.rgb_path = '/data/laiyan/ssd/ddad/raw_data/'
         self.depth_path = '/data/laiyan/ssd/ddad/depth'
         self.match_path = '/data/laiyan/ssd/ddad/match'
         cur_path = os.path.dirname(os.path.realpath(__file__))
-        self.mask_path = os.path.join(cur_path, 'ddad_mask')
-        file_name = os.path.join(self.mask_path, 'mask_idx_dict.pkl')
-        self.mask_idx_dict = pd.read_pickle(file_name)
+        if self.cfg['data'].get('use_surround_depth_mask'):
+            self.mask_path = '/data/laiyan/ssd/ddad/mask/'
+        else:
+            self.mask_path = os.path.join(cur_path, 'ddad_mask')
+            file_name = os.path.join(self.mask_path, 'mask_idx_dict.pkl')
+            self.mask_idx_dict = pd.read_pickle(file_name)
         self.data_transform = kwargs['data_transform']
         self.cameras = [i.upper() for i in self.cameras]
-        self.cfg=cfg
+
+        print('dataset length is {}'.format(len(self.filenames)))
 
 
     def __len__(self):
@@ -166,7 +185,8 @@ class DDADdataset(torch.utils.data.Dataset):
 
         # for self-occ mask
         scene_name = self.info[index_temporal]['scene_name']
-        mask_idx = self.mask_idx_dict[int(scene_name)]
+        if not self.cfg['data'].get('use_surround_depth_mask'):
+            mask_idx = self.mask_idx_dict[int(scene_name)]
 
 
 
@@ -210,9 +230,15 @@ class DDADdataset(torch.utils.data.Dataset):
                 })
             # with mask
             if self.with_mask:
-                data.update({
-                    'mask': self.mask_loader(self.mask_path, mask_idx, self.cameras[index_spatial].lower())
-                })
+                if self.cfg['data'].get('use_surround_depth_mask'):
+                    data.update({
+                        'mask': self.mask_loader(self.mask_path, self.cameras[index_spatial].upper(),scene_name)
+                    })
+
+                else:
+                    data.update({
+                        'mask': self.mask_loader(self.mask_path, mask_idx, self.cameras[index_spatial].lower())
+                    })
 
             # if context is returned
             if self.has_context:
@@ -250,7 +276,8 @@ class DDADdataset(torch.utils.data.Dataset):
         # with open('vf_my.pickle', 'wb') as handle:
         #     pickle.dump(sample, handle, protocol=pickle.HIGHEST_PROTOCOL)
         # exit()
-
+        if self.cfg['data'].get('use_surround_depth_mask'):
+            sample['mask'] = (sample['mask']==0).float()
         assert (self.cfg.get('training').get('flip_version') is not None) + (self.cfg.get('training').get('random_aug_intrinsics') is not None) <= 1
         if self.cfg.get('training').get('flip_version') is not None and self.mode=='train':
             flip_version = self.cfg.get('training').get('flip_version')

@@ -248,9 +248,21 @@ class MultiCamLoss(SingleCamLoss):
         if hasattr(self, 'spatial_depth_consistency_loss_weight'):
             spatial_depth_consistency_loss = self.compute_spatial_depth_consistency_loss_multi_cam(inputs, outputs,
                                                                 reproj_loss_mask=outputs[('reproj_mask', scale)])
-        cam_loss += reprojection_loss
         cam_loss += self.disparity_smoothness * smooth_loss / (2 ** scale)
-        cam_loss += self.spatio_coeff * spatio_loss + self.spatio_tempo_coeff * spatio_tempo_loss
+        cam_loss += reprojection_loss
+        if hasattr(self,'balanced_stp_loss') and self.balanced_stp_loss:
+
+            spt_rel_poses = outputs['spt_rel_poses']
+            if self.balanced_stp_loss_type==1:
+                with torch.no_grad:
+                    tempo_T = spt_rel_poses[('temporal',-1)]
+                    spatio_T = spt_rel_poses[('spatio','left')]
+                    spatio_tempo_T = spt_rel_poses[('spatio_temporal','left',-1)]
+                    spatio_weight = (torch.linalg.norm(tempo_T[:,:3,3],dim=1) / torch.linalg.norm(spatio_T[0][:,:3,3],dim=1)).mean()
+                    spatio_tempo_weight = (torch.linalg.norm(tempo_T[:,:3,3],dim=1) / torch.linalg.norm(spatio_tempo_T[0][:,:3,3],dim=1)).mean()
+                cam_loss += spatio_weight * spatio_loss + spatio_tempo_weight * spatio_tempo_loss
+        else:
+            cam_loss += self.spatio_coeff * spatio_loss + self.spatio_tempo_coeff * spatio_tempo_loss
         if hasattr(self, 'spatial_depth_consistency_loss_weight'):
             cam_loss += self.spatial_depth_consistency_loss_weight * spatial_depth_consistency_loss
 

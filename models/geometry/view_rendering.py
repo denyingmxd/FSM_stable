@@ -37,6 +37,16 @@ class ViewRendering(nn.Module):
         var = (((feature - mean) * mask) ** 2).sum(dim=sum_dim, keepdim=True) / (mask_num + 1e-8)
         return mean, torch.sqrt(var + 1e-16)
 
+    def get_mean_std_multi_cam_multi_channel(self, feature, mask):
+        """
+        This function returns mean and standard deviation of the overlapped features.
+        """
+        sum_dim = list(range(len(mask.shape) - 2, len(mask.shape)))
+        mask_num = mask.sum(dim=sum_dim, keepdim=True)
+        mean = (feature * mask).sum(dim=sum_dim, keepdim=True) / (mask_num + 1e-8)
+        var = (((feature - mean) * mask) ** 2).sum(dim=sum_dim, keepdim=True) / (mask_num + 1e-8)
+        return mean, torch.sqrt(var + 1e-16)
+
     def get_mean_std(self, feature, mask):
         """
         This function returns mean and standard deviation of the overlapped features. 
@@ -55,9 +65,12 @@ class ViewRendering(nn.Module):
 
         with torch.no_grad():
             mask = (src_mask * warp_mask).bool()
-
-            s_mean, s_std = self.get_mean_std_multi_cam(src_img, mask)
-            w_mean, w_std = self.get_mean_std_multi_cam(warp_img, mask)
+            if hasattr(self,'intensity_align_multi_channel') and self.intensity_align_multi_channel:
+                s_mean, s_std = self.get_mean_std_multi_cam_multi_channel(src_img, mask)
+                w_mean, w_std = self.get_mean_std_multi_cam_multi_channel(warp_img, mask)
+            else:
+                s_mean, s_std = self.get_mean_std_multi_cam(src_img, mask)
+                w_mean, w_std = self.get_mean_std_multi_cam(warp_img, mask)
 
         norm_warp = (warp_img - w_mean) / w_std * s_std + s_mean
         return norm_warp * warp_mask.float()
@@ -207,8 +220,9 @@ class ViewRendering(nn.Module):
                                                                            src_K,
                                                                            spt_rel_pose, scale, cam_points=cam_points)
                 if self.intensity_align:
+
                     warped_img = self.get_norm_image_multi_cam(inputs['color', frame_id, scale], inputs['mask'],
-                                                            warped_img, warped_mask)
+                                                                warped_img, warped_mask)
                 overlap_img += warped_img
                 overlap_mask += warped_mask
 

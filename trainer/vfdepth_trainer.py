@@ -123,7 +123,18 @@ class VFDepthTrainer:
         del inputs, outputs, losses
         
         model.set_train()
-        
+
+    def detach_dict(self, dic):
+        for k, v in dic.items():
+            if type(v) == torch.Tensor and v.is_cuda:
+                dic[k] = v.detach().cpu().numpy()
+            else:
+                if type(v) == torch.Tensor:
+                    dic[k] = v.numpy()
+                else:
+                    dic[k] = v
+        return dic
+
     @torch.no_grad()
     def evaluate(self, model,vis_results=False):
         """

@@ -397,6 +397,7 @@ class VFDepthAlgo(BaseModel):
     def compute_losses_multi_cam(self, inputs, outputs):
         # generate image and compute loss per cameara
         spt_rel_poses = self.pose.compute_each_relative_cam_poses(inputs, outputs)
+        outputs['spt_rel_poses'] = spt_rel_poses.copy()
         self.view_rendering.pred_all_cam_imgs(inputs, outputs, spt_rel_poses)
         total_loss, loss_dict = self.losses.forward_multi_cam(inputs, outputs)
         loss_dict['total_loss'] = total_loss
