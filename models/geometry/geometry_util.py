@@ -140,9 +140,9 @@ class Projection(nn.Module):
         This function back-projects 2D image points to 3D.
         """
         depth = depth.view(*depth.shape[:-2], -1)  # 1, 6, 1, 245760
-        points3D = torch.matmul(invK[..., :3, :3], self.homo_points.unsqueeze(0))  # 1, 6, 3, 245760
+        points3D = torch.matmul(invK[..., :3, :3], self.homo_points.unsqueeze(1))  # 1, 6, 3, 245760
         points3D = depth * points3D  # 1, 6, 3, 245760
-        return torch.cat([points3D, self.to_homo.unsqueeze(0).expand(-1, 6, -1, -1)], 2)
+        return torch.cat([points3D, self.to_homo.unsqueeze(1).expand(-1, 6, -1, -1)], 2)
 
     def reproject_multi_cam(self, K, points3D, T):
         """
