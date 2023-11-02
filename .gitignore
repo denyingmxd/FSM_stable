@@ -7,4 +7,5 @@
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
 results
+configs/ddp/ddad/
 *.pyc
