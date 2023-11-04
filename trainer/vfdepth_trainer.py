@@ -76,11 +76,11 @@ class VFDepthTrainer:
             losses['total_loss'].backward()
             model.optimizer.step()
             after_op_time = time.time()
-            import numpy as np
+
             if self.rank == 0:
                 times += (after_op_time - before_op_time)
                 print(batch_idx, (after_op_time - before_op_time), times / (1 + batch_idx), (time.time() - a) / (1 + batch_idx))
-
+                # print(outputs['spatio_weight'],outputs['spatio_tempo_weight'])
                 self.logger.update(
                     'train',
                     self.epoch,

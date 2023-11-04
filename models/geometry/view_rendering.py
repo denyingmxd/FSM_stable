@@ -162,6 +162,11 @@ class ViewRendering(nn.Module):
             pix_coords = self.project.forward_multi_cam(depth, cam_T_cam, invK, K)
         else:
             pix_coords = self.project.reproject_multi_cam(K, cam_points, cam_T_cam)
+
+        if img_warp_pad_mode == 'zeros':
+            pix_coords[pix_coords>1] = 2
+            pix_coords[pix_coords<-1] = 2
+
         pix_coords = pix_coords.view(-1, *pix_coords.shape[-3:])
 
         B, D, C, H, W = color.shape
@@ -171,11 +176,7 @@ class ViewRendering(nn.Module):
         img_warped = F.grid_sample(color.squeeze(0), pix_coords, mode='bilinear', padding_mode=img_warp_pad_mode, align_corners=True)
         mask_warped = F.grid_sample(mask.squeeze(0), pix_coords, mode='nearest', padding_mode='zeros', align_corners=True)
 
-        # nan handling
-        inf_img_regions = torch.isnan(img_warped)
-        img_warped[inf_img_regions] = 2.0
-        inf_mask_regions = torch.isnan(mask_warped)
-        mask_warped[inf_mask_regions] = 0
+
 
         pix_coords_dims = len(pix_coords.shape)
         pix_coords = pix_coords.permute(*range(pix_coords_dims - 3), pix_coords_dims - 1, pix_coords_dims - 3,

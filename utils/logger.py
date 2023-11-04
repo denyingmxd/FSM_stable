@@ -173,8 +173,11 @@ class Logger:
         for cam_id in range(self.num_cams):
             target_view = outputs[('cam', cam_id)]
             
-            plot_tb(writer, step, inputs[('color', 0, scale)][:, cam_id, ...], set_tb_title('cam', cam_id)) # frame_id 0            
-            plot_disp_tb(writer, step, target_view[('disp', scale)], set_tb_title('cam', cam_id, 'disp')) # disparity
+            plot_tb(writer, step, inputs[('color', 0, scale)][:, cam_id, ...], set_tb_title('cam', cam_id)) # frame_id 0
+            plot_tb(writer, step, inputs[('color', -1, scale)][:, cam_id, ...], set_tb_title('cam', cam_id,-1)) # frame_id 0
+            plot_tb(writer, step, inputs[('color', 1, scale)][:, cam_id, ...], set_tb_title('cam', cam_id,1)) # frame_id 0
+            # plot_disp_tb(writer, step, target_view[('disp', scale)], set_tb_title('cam', cam_id, 'disp')) # disparity
+            plot_disp_tb(writer, step, target_view[('depth', scale)], set_tb_title('cam', cam_id, 'depth')) # disparity
             plot_tb(writer, step, outputs[('reproj_loss', scale)][:, cam_id], set_tb_title('cam', cam_id, 'reproj')) # reprojection image
             plot_tb(writer, step, outputs[('reproj_mask', scale)][:, cam_id], set_tb_title('cam', cam_id, 'reproj_mask')) # reprojection mask
             plot_tb(writer,  step, inputs['mask'][:, cam_id, ...], set_tb_title('cam', cam_id, 'self_occ_mask'))
@@ -198,6 +201,7 @@ class Logger:
 
             if hasattr(self,'spatial_depth_consistency_loss_weight'):
                 plot_disp_tb(writer, step, outputs[('overlap_depth', 0, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_con'))
+                plot_disp_tb(writer, step, outputs[('depth_consistency_loss', 0, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_con_loss'))
 
             if hasattr(self, 'sp_tp_recon_con_loss_weight'):
                 for frame_id in self.frame_ids:

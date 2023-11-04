@@ -33,7 +33,34 @@ class MultiCamLoss(SingleCamLoss):
 
         outputs[('overlap_mask', 0, scale)] = spatio_mask
         outputs[('sp_loss', 0, scale)] = spatio_loss
-        return compute_masked_loss_multi_cam(spatio_loss, spatio_mask)
+
+
+        if hasattr(self,'balanced_stp_loss') and self.balanced_stp_loss:
+            spt_rel_poses = outputs['spt_rel_poses']
+            if self.balanced_stp_loss_type == 1:
+                with torch.no_grad():
+                    tempo_T = spt_rel_poses[('temporal', -1)]
+                    spatio_T_left = spt_rel_poses[('spatio', 'left')]
+                    spatio_T_right = spt_rel_poses[('spatio', 'right')]
+                    spatio_T_norm =  (torch.linalg.norm(spatio_T_left[:, :, :3, 3],dim=2)+  torch.linalg.norm(spatio_T_right[:, :, :3, 3],dim=2))/2
+                    spatio_weight = torch.linalg.norm(tempo_T[:, :, :3, 3], dim=2) / spatio_T_norm
+
+            elif self.balanced_stp_loss_type == 2:
+                with torch.no_grad():
+                    tempo_T = spt_rel_poses[('temporal', -1)]
+                    spatio_T_left = spt_rel_poses[('spatio', 'left')]
+                    spatio_T_right = spt_rel_poses[('spatio', 'right')]
+                    spatio_T_norm =  (torch.linalg.norm(spatio_T_left[:, :, 2:3, 3],dim=2)+  torch.linalg.norm(spatio_T_right[:, :, 2:3, 3],dim=2))/2
+                    spatio_weight = torch.linalg.norm(tempo_T[:, :, 2:3, 3], dim=2) / spatio_T_norm
+
+            outputs['spatio_weight'] = spatio_weight.detach().cpu()
+            weighted_spatio_loss =spatio_weight.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)*spatio_loss
+
+            return compute_masked_loss_multi_cam(weighted_spatio_loss, spatio_mask)
+
+
+        else:
+            return compute_masked_loss_multi_cam(spatio_loss, spatio_mask)
 
     def compute_spatio_loss(self, inputs, target_view, cam=None, scale=None, ref_mask=None):
         """
@@ -94,6 +121,35 @@ class MultiCamLoss(SingleCamLoss):
         spatio_tempo_loss, reprojection_loss_min_index = torch.min(spatio_tempo_losses, dim=2, keepdim=True)  # 1,6,1,384,640
         spatio_tempo_mask, _ = torch.max(spatio_tempo_masks.float(), dim=2, keepdim=True)  # 1,6,1,384,640
 
+        if hasattr(self,'balanced_stp_loss') and self.balanced_stp_loss:
+            spt_rel_poses = outputs['spt_rel_poses']
+            if self.balanced_stp_loss_type == 1:
+                with torch.no_grad():
+                    tempo_T = spt_rel_poses[('temporal', -1)]
+                    spatio_tempo_T_left_norm = (torch.linalg.norm(spt_rel_poses[('spatio_temporal', 'left', -1)][:, :, :3, 3],dim=2) \
+                                                + torch.linalg.norm(spt_rel_poses[('spatio_temporal', 'left', 1)][:, :, :3, 3],dim=2))/2
+                    spatio_tempo_T_right_norm = (torch.linalg.norm(spt_rel_poses[('spatio_temporal', 'right', -1)][:, :, :3, 3],dim=2) \
+                                                 + torch.linalg.norm(spt_rel_poses[('spatio_temporal', 'right', 1)][:, :, :3, 3],dim=2))/2
+
+                    spatio_tempo_T_norm = (spatio_tempo_T_left_norm+spatio_tempo_T_right_norm)/2
+                    spatio_tempo_weight = torch.linalg.norm(tempo_T[:, :, :3, 3], dim=2) / spatio_tempo_T_norm
+
+            elif self.balanced_stp_loss_type == 2:
+                with torch.no_grad():
+                    tempo_T = spt_rel_poses[('temporal', -1)]
+                    spatio_tempo_T_left_norm = (torch.linalg.norm(spt_rel_poses[('spatio_temporal', 'left', -1)][:, :, 2:3, 3],dim=2) \
+                                                + torch.linalg.norm(spt_rel_poses[('spatio_temporal', 'left', 1)][:, :, 2:3, 3],dim=2))/2
+                    spatio_tempo_T_right_norm = (torch.linalg.norm(spt_rel_poses[('spatio_temporal', 'right', -1)][:, :, 2:3, 3],dim=2) \
+                                                 + torch.linalg.norm(spt_rel_poses[('spatio_temporal', 'right', 1)][:, :, 2:3, 3],dim=2))/2
+
+                    spatio_tempo_T_norm = (spatio_tempo_T_left_norm+spatio_tempo_T_right_norm)/2
+                    spatio_tempo_weight = torch.linalg.norm(tempo_T[:, :, 2:3, 3], dim=2) / spatio_tempo_T_norm
+
+            outputs['spatio_tempo_weight'] = spatio_tempo_weight.detach().cpu()
+            weighted_spatio_tempo_loss =spatio_tempo_weight.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)*spatio_tempo_loss
+
+            return compute_masked_loss_multi_cam(weighted_spatio_tempo_loss, spatio_tempo_mask)
+
         return compute_masked_loss_multi_cam(spatio_tempo_loss, spatio_tempo_mask)
 
     def compute_spatio_tempo_loss(self, inputs, target_view, cam=None, scale=None, ref_mask=None, reproj_loss_mask=None) :
@@ -152,6 +208,7 @@ class MultiCamLoss(SingleCamLoss):
         spatio_depth_consistency_loss = torch.abs(loss_args['pred']-loss_args['target'])  # 1,6,1,384,640
 
         depth_con_mask = spatio_mask * (loss_args['pred'] > 0)  # 1,6,1,384,640
+        outputs[('depth_consistency_loss',0,scale)] = spatio_depth_consistency_loss * depth_con_mask
         return compute_masked_loss_multi_cam(spatio_depth_consistency_loss, depth_con_mask)
 
     def compute_spatial_depth_consistency_loss(self, inputs, target_view, cam=None, scale=None, ref_mask=None, reproj_loss_mask=None):
@@ -254,16 +311,7 @@ class MultiCamLoss(SingleCamLoss):
         cam_loss += self.disparity_smoothness * smooth_loss / (2 ** scale)
         cam_loss += reprojection_loss
         if hasattr(self,'balanced_stp_loss') and self.balanced_stp_loss:
-
-            spt_rel_poses = outputs['spt_rel_poses']
-            if self.balanced_stp_loss_type==1:
-                with torch.no_grad:
-                    tempo_T = spt_rel_poses[('temporal',-1)]
-                    spatio_T = spt_rel_poses[('spatio','left')]
-                    spatio_tempo_T = spt_rel_poses[('spatio_temporal','left',-1)]
-                    spatio_weight = (torch.linalg.norm(tempo_T[:,:3,3],dim=1) / torch.linalg.norm(spatio_T[0][:,:3,3],dim=1)).mean()
-                    spatio_tempo_weight = (torch.linalg.norm(tempo_T[:,:3,3],dim=1) / torch.linalg.norm(spatio_tempo_T[0][:,:3,3],dim=1)).mean()
-                cam_loss += spatio_weight * spatio_loss + spatio_tempo_weight * spatio_tempo_loss
+            cam_loss += spatio_loss + spatio_tempo_loss
         else:
             cam_loss += self.spatio_coeff * spatio_loss + self.spatio_tempo_coeff * spatio_tempo_loss
         if hasattr(self, 'spatial_depth_consistency_loss_weight'):

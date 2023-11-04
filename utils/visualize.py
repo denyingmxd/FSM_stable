@@ -69,6 +69,8 @@ def colormap(vis, normalize=True, torch_transpose=True):
     if normalize:
         ma = float(vis.max())
         mi = float(vis.min())
+        # ma = float(200)
+        # mi = float(1.5)
         d = ma - mi if ma != mi else 1e5
         vis = (vis - mi) / d
         

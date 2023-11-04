@@ -30,7 +30,8 @@ def transform_mask_sample(sample, data_transform):
     image_shape = data_transform.keywords['image_shape']
     # resize transform
 
-    resize_transform = transforms.Resize(image_shape, interpolation=transforms.InterpolationMode.LANCZOS)
+    # resize_transform = transforms.Resize(image_shape, interpolation=transforms.InterpolationMode.LANCZOS)
+    resize_transform = transforms.Resize(image_shape, interpolation=transforms.InterpolationMode.NEAREST)
     sample['mask'] = resize_transform(sample['mask'])
     # totensor transform
     tensor_transform = transforms.ToTensor()
@@ -128,7 +129,7 @@ class DDADdataset(torch.utils.data.Dataset):
         self.with_mask = kwargs['with_mask']
         self.with_pose = kwargs['with_pose']
         self.num_cams = len(self.cameras)
-        self.mask_loader =  mask_loader_scene_surrounddepth if self.cfg['data'].get('use_surround_depth_mask') else mask_loader_scene
+        self.mask_loader = mask_loader_scene
         self.mode=mode
         self.with_depth = self.mode=='val'
         self.with_input_depth = False
