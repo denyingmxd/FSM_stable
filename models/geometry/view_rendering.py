@@ -240,6 +240,7 @@ class ViewRendering(nn.Module):
                                                                                 ref_K)[:, :, 2:]
                     warped_depth, warped_mask = self.get_virtual_image_multi_cam(src_depth_tar_view, src_mask, ref_depth,
                                                                        ref_invK, src_K, spt_rel_pose, scale)
+                    outputs[('overlap' + '_depth' + '_{}'.format(direction), frame_id, 0)] = warped_depth
                     overlap_depth = overlap_depth + warped_depth
 
             self.build_cam_outputs(outputs, overlap_img, overlap_mask, 'overlap', frame_id, overlap_depth=overlap_depth)
