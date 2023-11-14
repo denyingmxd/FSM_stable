@@ -38,6 +38,21 @@ def transform_mask_sample(sample, data_transform):
     sample['mask'] = tensor_transform(sample['mask'])
     return sample
 
+def transform_seg_sample(sample, data_transform):
+    """
+    This function transforms masks to match input rgb images.
+    """
+    image_shape = data_transform.keywords['image_shape']
+    # resize transform
+
+    resize_transform = transforms.Resize(image_shape, interpolation=transforms.InterpolationMode.NEAREST)
+    tensor_transform = transforms.ToTensor()
+    sample['seg'] = tensor_transform(sample['seg'])
+    sample['seg'] = resize_transform(sample['seg'])
+    # totensor transform
+
+    return sample
+
 
 def mask_loader_scene(path, mask_idx, cam):
     """
@@ -160,7 +175,10 @@ class DDADdataset(torch.utils.data.Dataset):
             self.mask_idx_dict = pd.read_pickle(file_name)
         self.data_transform = kwargs['data_transform']
         self.cameras = [i.upper() for i in self.cameras]
-
+        
+        self.mask_sky = cfg['data'].get('mask_sky')
+        self.ground = cfg['data'].get('ground')
+        self.use_seg = self.mask_sky or self.ground
         print('dataset length is {}'.format(len(self.filenames)))
 
 
@@ -240,6 +258,11 @@ class DDADdataset(torch.utils.data.Dataset):
                     data.update({
                         'mask': self.mask_loader(self.mask_path, mask_idx, self.cameras[index_spatial].lower())
                     })
+            if self.use_seg:
+
+                data.update({
+                    'seg': np.load(rgb_filename.replace('rgb','deeplabv3plus_results').replace('jpg','npz'))['arr_0'][0]
+                })
 
             # if context is returned
             if self.has_context:
@@ -259,8 +282,6 @@ class DDADdataset(torch.utils.data.Dataset):
 
 
 
-
-
             sample.append(data)
 
 
@@ -269,10 +290,19 @@ class DDADdataset(torch.utils.data.Dataset):
             sample = [self.data_transform(smp) for smp in sample]
 
             sample = [transform_mask_sample(smp, self.data_transform) for smp in sample]
+            if self.use_seg:
+                sample = [transform_seg_sample(smp, self.data_transform) for smp in sample]
 
         # stack and align dataset for our trainer
         sample = stack_sample(sample)
         sample = align_dataset(sample, self.scales, contexts,self.has_context)
+        if self.mask_sky:
+            mask_sky = sample['seg']==10
+            mask_sky = (~mask_sky).float()
+            sample['mask'] = sample['mask'] * mask_sky
+        if self.ground:
+            mask_ground = sample['seg']==0
+            sample['ground'] = (mask_ground).float()
         # import pickle
         # with open('vf_my.pickle', 'wb') as handle:
         #     pickle.dump(sample, handle, protocol=pickle.HIGHEST_PROTOCOL)

@@ -176,7 +176,7 @@ class Logger:
             plot_tb(writer, step, inputs[('color', 0, scale)][:, cam_id, ...], set_tb_title('cam', cam_id)) # frame_id 0
             plot_tb(writer, step, inputs[('color', -1, scale)][:, cam_id, ...], set_tb_title('cam', cam_id,-1)) # frame_id 0
             plot_tb(writer, step, inputs[('color', 1, scale)][:, cam_id, ...], set_tb_title('cam', cam_id,1)) # frame_id 0
-            # plot_disp_tb(writer, step, target_view[('disp', scale)], set_tb_title('cam', cam_id, 'disp')) # disparity
+            plot_disp_tb(writer, step, target_view[('disp', scale)], set_tb_title('cam', cam_id, 'disp')) # disparity
             plot_disp_tb(writer, step, target_view[('depth', scale)], set_tb_title('cam', cam_id, 'depth')) # disparity
             plot_tb(writer, step, outputs[('reproj_loss', scale)][:, cam_id], set_tb_title('cam', cam_id, 'reproj')) # reprojection image
             plot_tb(writer, step, outputs[('reproj_mask', scale)][:, cam_id], set_tb_title('cam', cam_id, 'reproj_mask')) # reprojection mask
@@ -198,10 +198,14 @@ class Logger:
                         continue
                     plot_norm_tb(writer, step, outputs[('overlap', frame_id, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_tm_', frame_id))
                     plot_tb(writer, step, outputs[('overlap_mask', frame_id, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_tm_mask_', frame_id))
-
+                    plot_tb(writer, step,outputs[('stp_loss', 0, scale)][:, cam_id] * outputs[('overlap_mask', frame_id, scale)][:, cam_id],
+                            set_tb_title('cam', cam_id, 'stp_loss'))
             if hasattr(self,'spatial_depth_consistency_loss_weight'):
                 plot_disp_tb(writer, step, outputs[('overlap_depth', 0, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_con'))
                 plot_disp_tb(writer, step, outputs[('depth_consistency_loss', 0, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_con_loss'))
+            if hasattr(self,'spatial_normal_consistency_loss_weight'):
+                plot_disp_tb(writer, step, outputs[('overlap_normal', 0, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_normal_con'))
+                plot_disp_tb(writer, step, outputs[('normal_consistency_loss', 0, scale)][:, cam_id], set_tb_title('cam', cam_id, 'sp_normal_con_loss'))
 
             if hasattr(self, 'sp_tp_recon_con_loss_weight'):
                 for frame_id in self.frame_ids:
@@ -209,9 +213,8 @@ class Logger:
                         continue
                     plot_tb(writer, step, outputs[('sp_tp_recon_con_loss', scale,frame_id)][:, cam_id],set_tb_title('cam', cam_id, 'sp_tp_recon_con_loss'))  # reprojection image
                     
-            if self.aug_depth:
-                plot_disp_tb(writer, step, target_view[('disp', scale, 'aug')], set_tb_title('view_aug', cam_id))                
-
+            if hasattr(self,'ground'):
+                plot_tb(writer, step, inputs['ground'][:, cam_id, ...], set_tb_title('cam', cam_id, 'ground_mask'))
     def log_result(self, inputs, outputs, idx, depth_eval_metric_cams,syn_visualize=False):
         """
         This function logs outputs for visualization.

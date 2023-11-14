@@ -2,7 +2,6 @@
 import torch.nn as nn
 
 from external.layers import ResnetEncoder, DepthDecoder
-from linear_attention_transformer.images import ImageLinearAttention
 
 
 class MonoDepthNet_attn(nn.Module):
@@ -16,23 +15,20 @@ class MonoDepthNet_attn(nn.Module):
         num_layers = cfg['model']['num_layers']
         pretrained = cfg['model']['weights_init']
         scales = cfg['training']['scales']
-        key_dim = cfg['model']['depth_attn_key_dim']
         self.depth_encoder = ResnetEncoder(num_layers, pretrained, 1)
         del self.depth_encoder.encoder.fc  # For ddp training
         self.depth_decoder = DepthDecoder(self.depth_encoder.num_ch_enc, scales)
-
-        self.attn = ImageLinearAttention(
-                      chan = 1,
-                      heads = 1,
-                      key_dim = key_dim       # can be decreased to 32 for more memory savings
-                    )
-
+        self.multihead_attn = nn.MultiheadAttention(self.depth_encoder.num_ch_enc[-1], 8)
 
     def forward(self, input_images):
         depth_feature = self.depth_encoder(input_images)
+        last_feature = depth_feature[-1]
+        b,c,h,w = last_feature.shape#SNE
+        last_feature_patches = last_feature.reshape(b, c, h * w).permute((2, 0, 1))
+        last_feature_patches,last_feature_patches_weight = \
+            self.multihead_attn(last_feature_patches,last_feature_patches,last_feature_patches)
+        depth_feature[-1] = last_feature_patches.permute((1,2,0)).reshape(b,c,h,w)
+
         outputs = self.depth_decoder(depth_feature)
-        for scale in self.depth_decoder.scales:
-            xxx = outputs[('disp',scale)]
-            outputs[('disp',scale)] = self.attn(xxx)+xxx
 
         return outputs

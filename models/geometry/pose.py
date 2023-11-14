@@ -30,6 +30,18 @@ class Pose:
             pose = {}
             for cam in range(self.num_cams):
                 pose[('cam', cam)] = self.get_single_pose(net, inputs, cam)
+        elif self.pose_model=='avg':
+            pose = {}
+            for cam in range(self.num_cams):
+                pose[('cam', cam)] = self.get_single_pose(net, inputs, cam)
+
+            for f_i in self.frame_ids[1:]:
+                all_poses = torch.concat([pose[('cam', cam)][('cam_T_cam',0,f_i)] for cam in range(self.num_cams)])
+                canonical_pose = torch.mean(inputs['extrinsics'][0]@all_poses@inputs['extrinsics_inv'][0],dim=0,keepdim=True)
+                distribued_pose = inputs['extrinsics_inv'][0]@canonical_pose@inputs['extrinsics'][0]
+                for cam in range(self.num_cams):
+                    pose[('cam', cam)][('cam_T_cam',0,f_i)] = distribued_pose[cam:cam+1,:]
+
         else:
             raise NotImplementedError
         return pose

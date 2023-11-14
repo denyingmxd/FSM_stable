@@ -96,6 +96,8 @@ class VFDepthAlgo(BaseModel):
             return MonoDepthNet_attn(cfg).cuda()
         elif self.depth_model == 'fsm':
             return MonoDepthNet(cfg).cuda()
+        elif self.depth_model == 'fsm':
+            return MonoDepthNet(cfg).cuda()
         elif self.depth_model == 'fsm_volume':
             return MonoDepthVolumeNet(cfg).cuda()
         elif self.depth_model == 'fsm_fusion':

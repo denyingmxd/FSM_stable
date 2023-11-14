@@ -1,5 +1,5 @@
 ddp:
-  ddp_enable: False
+  ddp_enable: True
   world_size: 4
   gpus: [0,1,2,3]
   port: '12355'
@@ -15,6 +15,8 @@ data:
   data_path: '/data/laiyan/ssd/ddad/raw_data/ddad.json'
   log_dir: './results/'
   dataset: 'ddad'
+#  mask_sky: True
+  ground: True
   back_context: 1
   forward_context: 1
   depth_type: 'lidar'
@@ -55,6 +57,7 @@ training:
   intensity_align_ls2: False
   temporal_border: True
 
+
   ## Focal length scaling
   focal_length_scale: 300
 
@@ -66,8 +69,10 @@ loss:
   disparity_smoothness: 0.1 # For convergence
   spatio_coeff: 0.03
   spatio_tempo_coeff: 0.1
+  ground_two_view_loss_weight: 0.1
   spatial_depth_consistency_loss_weight: 0.001
   spatial_depth_consistency_type: 'pre'
+#  spatial_normal_consistency_loss_weight: 0.001
 #  sp_tp_recon_con_loss_weight: 0.1
 
 eval:

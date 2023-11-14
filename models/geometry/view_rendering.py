@@ -90,13 +90,13 @@ class ViewRendering(nn.Module):
             w_mean, w_std = self.get_mean_std(warp_img, mask)
 
         norm_warp = (warp_img - w_mean) / w_std * s_std + s_mean
-        return norm_warp * warp_mask.float()   
+        return norm_warp * warp_mask.float()
 
     def get_virtual_image(self, src_img, src_mask, tar_depth, tar_invK, src_K, T, scale=0, temporal_border=False):
         """
-        This function warps source image to target image using backprojection and reprojection process. 
+        This function warps source image to target image using backprojection and reprojection process.
         """
-        # do reconstruction for target from source   
+        # do reconstruction for target from source
         pix_coords = self.project(tar_depth, T, tar_invK, src_K)
         if temporal_border:
             img_warped = F.grid_sample(src_img, pix_coords, mode='bilinear',
@@ -114,7 +114,7 @@ class ViewRendering(nn.Module):
         mask_warped[inf_mask_regions] = 0
 
         pix_coords = pix_coords.permute(0, 3, 1, 2)
-        invalid_mask = torch.logical_or(pix_coords > 1, 
+        invalid_mask = torch.logical_or(pix_coords > 1,
                                         pix_coords < -1).sum(dim=1, keepdim=True) > 0
         return img_warped, (~invalid_mask).float() * mask_warped
 
@@ -212,7 +212,7 @@ class ViewRendering(nn.Module):
         for frame_id in self.frame_ids:
             overlap_img = torch.zeros_like(inputs['color', frame_id, scale])
             overlap_mask = torch.zeros_like(inputs['mask'])
-            use_depth_consistency = hasattr(self, 'spatial_depth_consistency_loss_weight')
+            use_depth_consistency = hasattr(self, 'spatial_depth_consistency_loss_weight') or hasattr(self, 'spatial_normal_consistency_loss_weight')
             overlap_depth = torch.zeros_like(ref_depth) if use_depth_consistency else None
             for direction in ['left', 'right']:
                 spt_rel_pose = spt_rel_poses[('spatio', direction)] if frame_id == 0 else spt_rel_poses[
@@ -253,13 +253,13 @@ class ViewRendering(nn.Module):
     def forward(self, inputs, outputs, cam, rel_pose_dict):
         # predict images for each scale(default = scale 0 only)
         scale = source_scale = 0
-        
+
         # ref inputs
-        ref_color = inputs['color', 0, source_scale][:,cam, ...]        
+        ref_color = inputs['color', 0, source_scale][:,cam, ...]
         ref_mask = inputs['mask'][:, cam, ...]
         ref_K = inputs[('K', source_scale)][:,cam, ...]
-        ref_invK = inputs[('inv_K', source_scale)][:,cam, ...]  
-        
+        ref_invK = inputs[('inv_K', source_scale)][:,cam, ...]
+
         # output
         target_view = outputs[('cam', cam)]
 
