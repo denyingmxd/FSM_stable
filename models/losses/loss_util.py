@@ -35,7 +35,7 @@ def compute_masked_loss_multi_cam(loss, mask):
     """
     This function masks losses while avoiding zero division.
     """
-    return ((loss * mask).sum(dim=[0, 2, 3, 4]) / (mask.sum(dim=[0, 2, 3, 4]) + 1e-8)).mean()
+    return ((loss * mask).sum(dim=[2, 3, 4]) / (mask.sum(dim=[2, 3, 4]) + 1e-8)).mean()
 
 def compute_masked_loss(loss, mask):    
     """
